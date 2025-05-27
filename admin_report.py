@@ -1,5 +1,10 @@
 
 
+import mysql.connector
+from datetime import datetime
+from utility import clear_console, validate_input, get_next_id, db, cursor, validate_batch, show_table
+
+
 def admin_reports():
 	while True:
 		clear_console()
@@ -44,7 +49,7 @@ def admin_reports():
 			print("Error: Invalid choice")
 			input("Press Enter to continue")
 
-# Individual report functions
+# Check Individual report functions 
 def admin_report_members_by_filters():
 	clear_console()
 	print("REPORT 1: MEMBERS BY FILTERS")
@@ -98,6 +103,7 @@ def admin_report_members_by_filters():
 	
 	show_table(query, params)
 	input("Press Enter to continue")
+
 
 def admin_report_unpaid_members():
 	clear_console()
@@ -267,18 +273,16 @@ def admin_report_alumni_members():
 	as_of_date = input("As of date (YYYY-MM-DD, leave blank for today): ") or datetime.now().strftime('%Y-%m-%d')
 	
 	query = """
-		SELECT DISTINCT m.memberid AS "ID", 
-			   m.firstname AS "First Name", 
-			   m.lastname AS "Last Name", 
-			   m.batch AS "Batch", 
-			   s.academicyear AS "Last Active Year"
+		SELECT m.memberid AS "ID", 
+			m.firstname AS "First Name", 
+			m.lastname AS "Last Name", 
+			m.batch AS "Batch", 
+			s.alumni_date AS "Alumni Since"
 		FROM member m 
 		JOIN serves s ON m.memberid = s.memberid
-		WHERE s.organizationid = %s AND s.status = 'alumni'
-		AND STR_TO_DATE(CASE s.semester
-			WHEN 1 THEN CONCAT(SUBSTRING(s.academicyear, 1, 4), '-08-01')
-			WHEN 2 THEN CONCAT(SUBSTRING(s.academicyear, 6, 4), '-01-01')
-			END, '%Y-%m-%d') <= %s
+		WHERE s.organizationid = %s
+		AND s.status = 'alumni'
+		AND s.alumni_date <= %s;
 	"""
 	show_table(query, (org_id, as_of_date))
 	input("Press Enter to continue")

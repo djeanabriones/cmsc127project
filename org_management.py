@@ -6,8 +6,9 @@ from datetime import datetime
 from tabulate import tabulate
 from admin_dashboard import admin_menu
 from utility import clear_console, validate_input, get_next_id, db, cursor
-
-
+from admin_report import admin_reports
+from president import president_menu
+from member import member_menu
 
 # Database connection
 def connect_db():
@@ -112,9 +113,9 @@ def signin():
 	input("Press Enter to continue")
 	
 	if "president" in role.lower():
-		president_menu(member_id)
+		admin_reports()
 	else:
-		admin_menu()
+		member_menu(member_id)
 	
 	return None
 
