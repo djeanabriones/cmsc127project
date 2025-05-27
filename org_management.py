@@ -113,7 +113,7 @@ def signin():
 	input("Press Enter to continue")
 	
 	if "president" in role.lower():
-		admin_reports()
+		president_menus()
 	else:
 		member_menu(member_id)
 	
