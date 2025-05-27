@@ -1,3 +1,5 @@
+import re
+from admin_report import admin_reports
 from utility import clear_console, validate_input, get_next_id, db, cursor, validate_batch, show_table
 from admin_report import admin_reports
 import mysql.connector
