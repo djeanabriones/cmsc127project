@@ -338,6 +338,13 @@ def show_overall_status_chart(data):
 	plt.axis('equal')
 	plt.show()
 
+def get_all_organizations():
+    try:
+        cursor.execute("SELECT organizationid, organizationname FROM organization")
+        return cursor.fetchall()
+    except Exception as e:
+        print("Error fetching organizations:", e)
+        return []
 
 # Landing Page
 def landing_page():
@@ -416,6 +423,17 @@ def get_fee_totals(cursor, organization_id, as_of_date):
         return result  # tuple (total_paid, total_unpaid)
     return (0, 0)
 
+def update_organization_name(org_id, new_name):
+    cursor.execute("UPDATE organization SET organizationname = %s WHERE organizationid = %s", (new_name, org_id))
+    db.commit()
+
+def delete_organization(org_id):
+    cursor.execute("DELETE FROM organization WHERE organizationid = %s", (org_id,))
+    db.commit()
+
+def search_organizations_by_name(name_part):
+    cursor.execute("SELECT organizationid, organizationname FROM organization WHERE organizationname LIKE %s", (f"%{name_part}%",))
+    return cursor.fetchall()
 
 if __name__ == "__main__":
 	landing_page()

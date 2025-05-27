@@ -3,7 +3,7 @@ from doctest import master
 import random
 import string
 import customtkinter as ctk
-from tkinter import dialog, messagebox, Toplevel, ttk
+from tkinter import dialog, messagebox, Toplevel, simpledialog, ttk
 from tkcalendar import Calendar, DateEntry
 import backend as orgsystem  # Your backend module
 from db_connection import db, cursor
@@ -856,17 +856,9 @@ class OrgSelectPage(ctk.CTkFrame):
 
         ctk.CTkLabel(self, text="Select Organization", font=("Arial", 16)).pack(pady=10)
 
-        # Widgets for setting org
-        self.org_entry = ctk.CTkEntry(self, placeholder_text="Enter Organization ID")
-        self.org_entry.pack(pady=5)
-
-        self.set_org_btn = ctk.CTkButton(self, text="Set Organization", command=self.set_org)
-        self.set_org_btn.pack(pady=5)
-
-        self.new_org_name = ctk.CTkEntry(self, placeholder_text="New Organization Name")
-        self.new_org_name.pack(pady=5)
-        self.add_org_btn = ctk.CTkButton(self, text="Add Organization", command=self.add_org)
-        self.add_org_btn.pack(pady=5)
+        # Container frame for org buttons (for potential scroll later)
+        self.org_button_frame = ctk.CTkFrame(self)
+        self.org_button_frame.pack(pady=5, fill="both", expand=True)
 
         # Label for current org - hidden initially
         self.current_org_label = ctk.CTkLabel(self, text="", font=("Arial", 14, "bold"))
@@ -880,28 +872,52 @@ class OrgSelectPage(ctk.CTkFrame):
                                          command=lambda: master.show_frame(AdminReportPage))
         self.back_btn = ctk.CTkButton(self, text="Back",
                                       command=lambda: master.show_frame(AdminDashboardPage))
+        
+        search_frame = ctk.CTkFrame(self)
+        search_frame.pack(pady=5, fill="x")
 
-    def set_org(self):
-        org_id = self.org_entry.get()
-        if not org_id.isdigit():
-            messagebox.showerror("Error", "Organization ID must be numeric.")
-            return
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search organization name...")
+        self.search_entry.pack(side="left", expand=True, fill="x", padx=(0, 5))
 
-        # Get organization name from backend
+        search_button = ctk.CTkButton(search_frame, text="Search", command=self.search_organizations)
+        search_button.pack(side="right")
+
+        self.load_organizations()
+
+    def load_organizations(self, search_term=""):
+        # Clear existing buttons
+        for widget in self.org_button_frame.winfo_children():
+            widget.destroy()
+
         try:
-            org_name = orgsystem.get_organization_name(int(org_id))
-            if not org_name:
-                messagebox.showerror("Error", f"Organization ID {org_id} not found.")
+            if search_term:
+                orgs = orgsystem.search_organizations_by_name(search_term)
+            else:
+                orgs = orgsystem.get_all_organizations()
+
+            if not orgs:
+                messagebox.showinfo("Info", "No organizations found.")
                 return
+
+            for org_id, org_name in orgs:
+                btn = ctk.CTkButton(
+                    self.org_button_frame,
+                    text=f"{org_id} - {org_name}",
+                    command=lambda oid=org_id, oname=org_name: self.set_org(oid, oname)
+                )
+                btn.pack(pady=5, fill="x")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to get organization name: {e}")
-            return
+            messagebox.showerror("Error", f"Failed to load organizations: {e}")
 
-        self.master.selected_org = int(org_id)
-        messagebox.showinfo("Success", f"Managing Organization {org_id}")
+    def search_organizations(self):
+        query = self.search_entry.get().strip()
+        self.load_organizations(search_term=query)
 
-        # Hide input widgets
-        self.hide_org_input_widgets()
+    def set_org(self, org_id, org_name):
+        self.master.selected_org = org_id
+
+        # Hide the org buttons
+        self.org_button_frame.pack_forget()
 
         # Show current org label
         self.current_org_label.configure(text=f"Currently Managing: {org_name}")
@@ -910,44 +926,53 @@ class OrgSelectPage(ctk.CTkFrame):
         # Show menu buttons
         self.show_menu_buttons()
 
-    def add_org(self):
-        name = self.new_org_name.get()
-        if not name:
-            messagebox.showerror("Error", "Organization name is required.")
-            return
-        try:
-            org_id = orgsystem.get_next_id("organization", "organizationid")
-            orgsystem.cursor.execute("INSERT INTO organization (organizationid, organizationname) VALUES (%s, %s)", (org_id, name))
-            orgsystem.db.commit()
-            messagebox.showinfo("Success", f"Added '{name}' with ID {org_id}")
+        self.update_org_btn = ctk.CTkButton(self, text="Update Organization", command=lambda: self.update_organization(org_id, org_name))
+        self.update_org_btn.pack(pady=5)
 
-            # Auto-select the newly added org
-            self.master.selected_org = org_id
+        self.delete_org_btn = ctk.CTkButton(self, text="Delete Organization", command=lambda: self.delete_organization(org_id))
+        self.delete_org_btn.pack(pady=5)
 
-            # Hide input widgets
-            self.hide_org_input_widgets()
 
-            # Show current org label
-            self.current_org_label.configure(text=f"Currently Managing: {name}")
-            self.current_org_label.pack(pady=10)
-
-            # Show menu buttons
-            self.show_menu_buttons()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-    def hide_org_input_widgets(self):
-        self.org_entry.pack_forget()
-        self.set_org_btn.pack_forget()
-        self.new_org_name.pack_forget()
-        self.add_org_btn.pack_forget()
+        messagebox.showinfo("Success", f"Managing Organization {org_id}")
 
     def show_menu_buttons(self):
         self.manage_members_btn.pack(pady=5)
         self.manage_fees_btn.pack(pady=5)
         self.reports_btn.pack(pady=5)
-        self.back_btn.pack(pady=10)
+        self.back_btn.pack(pady=20)
 
+    def update_organization(self, org_id, old_name):
+        new_name = simpledialog.askstring("Update Organization", f"Enter new name for '{old_name}':")
+        if not new_name:
+            return
+
+        try:
+            orgsystem.update_organization_name(org_id, new_name)
+            messagebox.showinfo("Success", "Organization name updated.")
+            self.current_org_label.configure(text=f"Currently Managing: {new_name}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update organization: {e}")
+
+    def delete_organization(self, org_id):
+        confirm = messagebox.askyesno("Delete Organization", "Are you sure you want to delete this organization? This cannot be undone.")
+        if not confirm:
+            return
+
+        try:
+            orgsystem.delete_organization(org_id)
+            messagebox.showinfo("Success", "Organization deleted.")
+            self.master.selected_org = None
+            self.current_org_label.configure(text="")
+            self.manage_members_btn.pack_forget()
+            self.manage_fees_btn.pack_forget()
+            self.reports_btn.pack_forget()
+            self.back_btn.pack_forget()
+            self.update_org_btn.pack_forget()
+            self.delete_org_btn.pack_forget()
+            self.org_button_frame.pack(pady=5, fill="both", expand=True)
+            self.load_organizations()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete organization: {e}")
 
 class AdminOrgDashboardPage(ctk.CTkFrame):
     def __init__(self, master):
