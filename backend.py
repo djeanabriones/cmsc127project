@@ -181,6 +181,37 @@ def signin(member_id):
         "role": role
     }
 
+def get_all_members():
+    query = """
+        SELECT memberid, 
+               CONCAT(firstname, ' ', lastname) AS name
+        FROM member
+    """
+    cursor.execute(query)
+    raw_members = cursor.fetchall()
+
+    # Add dummy role/status
+    members = [(m[0], m[1], "Member", "Active") for m in raw_members]
+    return members
+
+def delete_member(memberid):
+    cursor.execute("DELETE FROM member WHERE memberid = %s", (memberid,))
+    db.commit()
+
+def get_members_by_org(organization_id):
+    try:
+        query = """
+            SELECT m.memberid, CONCAT(m.firstname, ' ', m.lastname) AS name, mo.role, mo.status
+            FROM member m
+            JOIN membership mo ON m.memberid = mo.memberid
+            WHERE mo.organizationid = %s
+        """
+        cursor.execute(query, (organization_id,))
+        return cursor.fetchall()
+    except Exception as e:
+        print("Error in get_members_by_org:", e)
+        return []
+
 
 # Landing Page
 def landing_page():

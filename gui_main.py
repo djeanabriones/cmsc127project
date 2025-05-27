@@ -17,7 +17,7 @@ class OrgApp(ctk.CTk):
 
         self.frames = {}
         for F in (
-            StartPage, SignUpPage, SignInPage, DashboardPage, FeePage, MemberPage, ReportPage,
+            StartPage, SignUpPage, SignInPage, DashboardPage, FeePage, ReportPage,
             UserDashboardPage, JoinOrgPage, AdminDashboardPage, OrgSelectPage,
             AdminMemberPage, AdminFeePage, AdminReportPage, AdminOrgDashboardPage
         ):
@@ -31,9 +31,14 @@ class OrgApp(ctk.CTk):
 
         self.show_frame(StartPage)
 
-    def show_frame(self, page):
-        frame = self.frames[page]
-        frame.tkraise()
+    def show_frame(self, frame_class, *args, **kwargs):
+        if frame_class not in self.frames:
+            frame = frame_class(self, *args, **kwargs)
+            self.frames[frame_class] = frame
+            frame.pack(fill="both", expand=True)
+        else:
+            frame = self.frames[frame_class]
+            frame.tkraise()
 
     def show_home(self):
         # current_user assumed to be dict with 'role' and 'memberid'
@@ -149,7 +154,7 @@ class DashboardPage(ctk.CTkFrame):
         self.label = ctk.CTkLabel(self, text="", font=("Arial", 18))
         self.label.pack(pady=30)
         ctk.CTkButton(self, text="Manage Fees", command=lambda: master.show_frame(FeePage)).pack(pady=10)
-        ctk.CTkButton(self, text="Manage Members", command=lambda: master.show_frame(MemberPage)).pack(pady=10)
+        ctk.CTkButton(self, text="Manage Members", command=lambda: master.show_frame(MemberPage, organization_id=self.master.selected_org)).pack(pady=10)
         ctk.CTkButton(self, text="Generate Report", command=lambda: master.show_frame(ReportPage)).pack(pady=10)
         ctk.CTkButton(self, text="Logout", command=self.logout).pack(pady=20)
 
@@ -198,52 +203,61 @@ class FeePage(ctk.CTkFrame):
 
 
 class MemberPage(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, organization_id):
+        print("MemberPage loaded")
         super().__init__(master)
-        self.members_text = ctk.CTkTextbox(self, height=150, width=400)
-        self.members_text.pack(pady=10)
+        self.master = master
+        self.organization_id = organization_id  # Store it for use
 
-        self.name = ctk.CTkEntry(self, placeholder_text="Name")
-        self.name.pack(pady=3)
-        self.pos = ctk.CTkEntry(self, placeholder_text="Position")
-        self.pos.pack(pady=3)
-        self.yr = ctk.CTkEntry(self, placeholder_text="Year Level")
-        self.yr.pack(pady=3)
+        # Add Member Button
+        self.add_member_btn = ctk.CTkButton(self, text="Add Member", command=self.open_add_member_dialog)
+        self.add_member_btn.pack(pady=10)
 
-        ctk.CTkButton(self, text="Add Member", command=self.add_member).pack(pady=3)
-        ctk.CTkButton(self, text="Remove Member", command=self.remove_member).pack(pady=3)
-        ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(DashboardPage)).pack(pady=10)
+        # Scrollable Frame for Table
+        self.member_frame = ctk.CTkScrollableFrame(self)
+        self.member_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
-    def tkraise(self, *args, **kwargs):
         self.refresh_members()
-        super().tkraise(*args, **kwargs)
 
     def refresh_members(self):
-        self.members_text.delete("1.0", "end")
-        members = orgsystem.get_members(self.master.current_user["memberid"])
-        for m in members:
-            self.members_text.insert("end", f"Name: {m[1]} | Position: {m[2]} | Year: {m[3]}\n")
+        for widget in self.member_frame.winfo_children():
+            widget.destroy()
 
-    def add_member(self):
-        name = self.name.get()
-        pos = self.pos.get()
-        yr = self.yr.get()
-        if not (name and pos and yr):
-            messagebox.showerror("Error", "Fill all member details")
-            return
-        if not yr.isdigit():
-            messagebox.showerror("Error", "Year level must be a number")
-            return
-        orgsystem.add_member(self.master.current_user["memberid"], name, pos, int(yr))
-        self.refresh_members()
+        headers = ["Mem ID", "Name", "Role", "Status", "Edit", "Delete"]
+        for col, text in enumerate(headers):
+            label = ctk.CTkLabel(self.member_frame, text=text, font=("Arial", 12, "bold"))
+            label.grid(row=0, column=col, padx=5, pady=5)
 
-    def remove_member(self):
-        name = self.name.get()
-        if not name:
-            messagebox.showerror("Error", "Enter the member's name to remove")
-            return
-        orgsystem.remove_member(self.master.current_user["memberid"], name)
-        self.refresh_members()
+        # Now only fetch members for the selected organization
+        members = orgsystem.get_members_by_org(self.organization_id)
+
+        for row, member in enumerate(members, start=1):
+            mem_id, name, role, status = member
+
+            ctk.CTkLabel(self.member_frame, text=str(mem_id)).grid(row=row, column=0, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=name).grid(row=row, column=1, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=role).grid(row=row, column=2, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=status).grid(row=row, column=3, padx=5, pady=2)
+
+            edit_btn = ctk.CTkButton(self.member_frame, text="Edit", width=50, command=lambda m=member: self.edit_member(m))
+            edit_btn.grid(row=row, column=4, padx=5)
+
+            del_btn = ctk.CTkButton(self.member_frame, text="Delete", width=50, fg_color="red", command=lambda m=member: self.delete_member(m))
+            del_btn.grid(row=row, column=5, padx=5)
+
+    def open_add_member_dialog(self):
+        # You can implement a popup dialog here for adding member
+        messagebox.showinfo("Add", "Show add member form here")
+
+    def edit_member(self, member):
+        # Open dialog to edit member
+        messagebox.showinfo("Edit", f"Edit Member {member[0]} - {member[1]}")
+
+    def delete_member(self, member):
+        confirm = messagebox.askyesno("Confirm Delete", f"Delete member {member[1]}?")
+        if confirm:
+            orgsystem.delete_member(member[0])
+            self.refresh_members()
 
 
 class ReportPage(ctk.CTkFrame):
@@ -412,7 +426,10 @@ class OrgSelectPage(ctk.CTkFrame):
             return
         self.master.selected_org = int(org_id)
         messagebox.showinfo("Success", f"Managing Organization {org_id}")
-        self.master.show_frame(AdminOrgDashboardPage)
+        
+        # Pass the org ID to MemberPage
+        self.master.show_frame(MemberPage, organization_id=self.master.selected_org)
+
 
 
     def add_org(self):
@@ -435,7 +452,7 @@ class AdminOrgDashboardPage(ctk.CTkFrame):
         self.org_label = ctk.CTkLabel(self, text="")
         self.org_label.pack(pady=5)
 
-        ctk.CTkButton(self, text="Manage Members", command=lambda: master.show_frame(AdminMemberPage)).pack(pady=5)
+        ctk.CTkButton(self, text="Manage Members", command=lambda: master.show_frame(MemberPage)).pack(pady=5)
         ctk.CTkButton(self, text="Manage Fees", command=lambda: master.show_frame(AdminFeePage)).pack(pady=5)
         ctk.CTkButton(self, text="Generate Report", command=lambda: master.show_frame(AdminReportPage)).pack(pady=5)
         ctk.CTkButton(self, text="Back to Dashboard", command=lambda: master.show_frame(AdminDashboardPage)).pack(pady=10)
@@ -452,40 +469,40 @@ class AdminMemberPage(ctk.CTkFrame):
         super().__init__(master)
         ctk.CTkLabel(self, text="Manage Members", font=("Arial", 16)).pack(pady=10)
 
-        self.search_entry = ctk.CTkEntry(self, placeholder_text="Search (Name/Role)")
-        self.search_entry.pack(pady=3)
+        # self.search_entry = ctk.CTkEntry(self, placeholder_text="Search (Name/Role)")
+        # self.search_entry.pack(pady=3)
 
-        ctk.CTkButton(self, text="Search", command=self.search_members).pack(pady=3)
+        # ctk.CTkButton(self, text="Search", command=self.search_members).pack(pady=3)
 
         self.result_box = ctk.CTkTextbox(self, height=300)
         self.result_box.pack(pady=10)
 
         ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(OrgSelectPage)).pack(pady=10)
 
-    def search_members(self):
-        org_id = self.master.selected_org
-        if not org_id:
-            messagebox.showerror("Error", "No organization selected.")
-            return
+    # def search_members(self):
+    #     org_id = self.master.selected_org
+    #     if not org_id:
+    #         messagebox.showerror("Error", "No organization selected.")
+    #         return
 
-        term = self.search_entry.get()
-        query = """
-            SELECT m.firstname, m.lastname, s.role, s.committee, s.status
-            FROM member m JOIN serves s ON m.memberid = s.memberid
-            WHERE s.organizationid = %s AND (
-                m.firstname LIKE %s OR m.lastname LIKE %s OR s.role LIKE %s
-                OR s.status LIKE %s OR s.committee LIKE %s
-            )
-        """
-        like = f"%{term}%"
-        try:
-            orgsystem.cursor.execute(query, (org_id, like, like, like, like, like))
-            results = orgsystem.cursor.fetchall()
-            self.result_box.delete("1.0", "end")
-            for r in results:
-                self.result_box.insert("end", f"{r[0]} {r[1]} | Role: {r[2]}, Committee: {r[3]}, Status: {r[4]}\n")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
+    #     term = self.search_entry.get()
+    #     query = """
+    #         SELECT m.firstname, m.lastname, s.role, s.committee, s.status
+    #         FROM member m JOIN serves s ON m.memberid = s.memberid
+    #         WHERE s.organizationid = %s AND (
+    #             m.firstname LIKE %s OR m.lastname LIKE %s OR s.role LIKE %s
+    #             OR s.status LIKE %s OR s.committee LIKE %s
+    #         )
+    #     """
+    #     like = f"%{term}%"
+    #     try:
+    #         orgsystem.cursor.execute(query, (org_id, like, like, like, like, like))
+    #         results = orgsystem.cursor.fetchall()
+    #         self.result_box.delete("1.0", "end")
+    #         for r in results:
+    #             self.result_box.insert("end", f"{r[0]} {r[1]} | Role: {r[2]}, Committee: {r[3]}, Status: {r[4]}\n")
+    #     except Exception as e:
+    #         messagebox.showerror("Error", str(e))
 
 
 class AdminFeePage(ctk.CTkFrame):
