@@ -1,11 +1,13 @@
 import datetime
+from doctest import master
+import random
+import string
 import customtkinter as ctk
 from tkinter import dialog, messagebox, Toplevel, ttk
 from tkcalendar import Calendar, DateEntry
 import backend as orgsystem  # Your backend module
 from db_connection import db, cursor
 from utility import get_next_id
-
 
 # Initialize DB tables (creates them if not exist)
 orgsystem.create_tables()
@@ -27,7 +29,7 @@ class OrgApp(ctk.CTk):
         self.frames = {}
         for F in (
             StartPage, SignUpPage, SignInPage, DashboardPage, FeePage, ReportPage,
-            UserDashboardPage, JoinOrgPage, AdminDashboardPage, OrgSelectPage,
+            UserDashboardPage, AdminDashboardPage, OrgSelectPage,
             AdminMemberPage, AdminFeePage, AdminReportPage, AdminOrgDashboardPage
         ):
             # Pass app instance only to SignUpPage, SignInPage
@@ -51,6 +53,12 @@ class OrgApp(ctk.CTk):
                 frame.set_organization(kwargs['organization_id'])
         frame.tkraise()
 
+    def open_admin_dashboard(self, member_id=None, org_id=None):
+        # You can do something with member_id, org_id if needed
+        self.show_frame(AdminDashboardPage)
+
+    def open_user_dashboard(self, member_id):
+        self.show_frame(UserDashboardPage, member_id=member_id)
 
 
     def show_home(self):
@@ -68,8 +76,19 @@ class StartPage(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
         ctk.CTkLabel(self, text="Welcome to Student Org System", font=("Arial", 20)).pack(pady=40)
-        ctk.CTkButton(self, text="Sign In", command=lambda: master.show_frame(SignInPage)).pack(pady=10)
-        ctk.CTkButton(self, text="Sign Up", command=lambda: master.show_frame(SignUpPage)).pack(pady=10)
+
+        ctk.CTkButton(
+            self,
+            text="Sign In as User",
+            command=lambda: master.show_frame(SignInPage, as_admin=False)
+        ).pack(pady=10)
+
+        ctk.CTkButton(
+            self,
+            text="Sign In as Admin",
+            command=lambda: master.show_frame(SignInPage, as_admin=True)
+        ).pack(pady=10)
+
 
 
 class SignUpPage(ctk.CTkFrame):
@@ -130,35 +149,62 @@ class SignInPage(ctk.CTkFrame):
         super().__init__(master)
         self.app = app
 
-        ctk.CTkLabel(self, text="Member ID").pack(pady=10)
-        self.member_id_entry = ctk.CTkEntry(self)
-        self.member_id_entry.pack(pady=5)
+        ctk.CTkLabel(self, text="Username").pack(pady=(20, 5))
+        self.username_entry = ctk.CTkEntry(self)
+        self.username_entry.pack(pady=5)
 
-        ctk.CTkButton(self, text="Sign In", command=self.sign_in).pack(pady=20)
+        ctk.CTkLabel(self, text="Password").pack(pady=(10, 5))
+        self.password_entry = ctk.CTkEntry(self, show="*")
+        self.password_entry.pack(pady=5)
 
-    def sign_in(self):
-        member_id_str = self.member_id_entry.get()
-        if not member_id_str.isdigit():
-            messagebox.showerror("Error", "Member ID must be a number")
-            return
+        ctk.CTkButton(self, text="Sign In as User", command=lambda: self.sign_in(as_admin=False)).pack(pady=(15, 5))
+        ctk.CTkButton(self, text="Sign In as Admin", command=lambda: self.sign_in(as_admin=True)).pack(pady=(0, 20))
+        ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(StartPage)).pack(pady=10)
+    
+    def sign_in(self, as_admin=False):
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get().strip()
 
-        member_id = int(member_id_str)
-        result = orgsystem.signin(member_id)
+        try:
+            cursor.execute("""
+                SELECT m.memberid, m.password, s.role, s.organizationid, m.firstname, m.lastname
+                FROM member m
+                LEFT JOIN serves s ON m.memberid = s.memberid
+                WHERE m.username = %s
+            """, (username,))
 
-        if not result.get("success"):
-            messagebox.showerror("Sign In Failed", result.get("error", "Unknown error"))
-        else:
-            # Set current_user for the app
-            self.app.current_user = result
-            self.app.user = result
+            result = cursor.fetchone()
 
-            messagebox.showinfo("Welcome", f"Welcome back, {result['firstname']} {result['lastname']} (Role: {result['role']})")
+            if result is None:
+                messagebox.showerror("Login Failed", "User not found.")
+                return
 
-            # Role check to open dashboards
-            if result["role"].lower() == "admin":
-                self.app.show_frame(AdminDashboardPage)
+            member_id, stored_password, role, org_id, firstname, lastname = result
+
+            if password != stored_password:
+                messagebox.showerror("Login Failed", "Incorrect password.")
+                return
+
+            # Store user info in master for access from other frames
+            self.master.user = {
+                "member_id": member_id,
+                "role": role,
+                "organization_id": org_id,
+                "firstname": firstname,
+                "lastname": lastname
+            }
+
+            if as_admin:
+                if member_id == 1 or role in ("President", "Vice President", "Secretary", "Treasurer"):
+                    self.master.open_admin_dashboard(member_id, org_id)
+                else:
+                    messagebox.showerror("Access Denied", "You do not have admin privileges.")
             else:
-                self.app.show_frame(UserDashboardPage)
+                self.master.open_user_dashboard(member_id)
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
 
 
 class DashboardPage(ctk.CTkFrame):
@@ -327,7 +373,8 @@ class MemberPage(ctk.CTkFrame):
         for widget in self.member_frame.winfo_children():
             widget.destroy()
 
-        headers = ["Mem ID", "Name", "Role", "Status", "Gender", "Degree", "Batch", "Academic Year", "Committee", "Edit", "Delete"]
+        headers = ["Mem ID", "Name", "Role", "Status", "Gender", "Degree", "Batch", "Academic Year", "Committee", "Username", "Password", "Edit", "Delete"]
+
         for col, text in enumerate(headers):
             label = ctk.CTkLabel(self.member_frame, text=text, font=("Arial", 12, "bold"))
             label.grid(row=0, column=col, padx=5, pady=5)
@@ -355,7 +402,8 @@ class MemberPage(ctk.CTkFrame):
 
             filtered_members = []
             for member in all_members:
-                mem_id, name, role, status, gender, degree, batch, academicyear, committee = member[:9]
+                mem_id, name, role, status, gender, degree, batch, academicyear, committee, username, password = member[:11]
+
 
 
                 if role_val != "All" and role != role_val:
@@ -381,21 +429,26 @@ class MemberPage(ctk.CTkFrame):
                     result = cursor.fetchone()
                     if result and result[0]:
                         alumni_date = result[0]
-                        if alumni_date and alumni_date > as_of_date:
-                            continue  # They became alumni after the as-of date
+                        if alumni_date is not None and as_of_date is not None and alumni_date > as_of_date:
+                            continue
 
                 filtered_members.append(member)
 
             # Sort by academic year string descending/ascending
             sort_order = self.academic_sort_filter.get()
             reverse_sort = sort_order == "Newest First"
-            filtered_members.sort(key=lambda m: m[7], reverse=reverse_sort)  # index 7 = academicyear
+            filtered_members.sort(
+                key=lambda m: m[7] if m[7] is not None else "",  # default to empty string
+                reverse=reverse_sort
+            )
+            # index 7 = academicyear
 
             members = filtered_members
 
         # Now display members passed or filtered
         for row, member in enumerate(members, start=1):
-            mem_id, name, role, status, gender, degree, batch, academicyear, committee = member[:9]
+            mem_id, name, role, status, gender, degree, batch, academicyear, committee, username, password = member[:11]
+
             ctk.CTkLabel(self.member_frame, text=str(mem_id)).grid(row=row, column=0, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=name).grid(row=row, column=1, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=role).grid(row=row, column=2, padx=5, pady=2)
@@ -405,12 +458,14 @@ class MemberPage(ctk.CTkFrame):
             ctk.CTkLabel(self.member_frame, text=str(batch)).grid(row=row, column=6, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=str(academicyear)).grid(row=row, column=7, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=committee or "").grid(row=row, column=8, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=username).grid(row=row, column=9, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=password).grid(row=row, column=10, padx=5, pady=2)
 
             edit_btn = ctk.CTkButton(self.member_frame, text="Edit", width=50, command=lambda m=member: self.edit_member(m))
-            edit_btn.grid(row=row, column=9, padx=5)
+            edit_btn.grid(row=row, column=11, padx=5)
 
             del_btn = ctk.CTkButton(self.member_frame, text="Delete", width=50, fg_color="red", command=lambda m=member: self.delete_member(m))
-            del_btn.grid(row=row, column=10, padx=5)
+            del_btn.grid(row=row, column=12, padx=5)
 
     def reset_filters(self):
         self.role_filter.set("All")
@@ -460,6 +515,13 @@ class MemberPage(ctk.CTkFrame):
         status_menu = ctk.CTkOptionMenu(dialog, values=status_options)
         status_menu.grid(row=status_label_row, column=1, padx=10, pady=5)
 
+        def generate_credentials(firstname, lastname):
+            base_username = (firstname[0] + lastname).lower()
+            suffix = ''.join(random.choices(string.digits, k=3))
+            username = base_username + suffix
+            password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+            return username, password
+
         def submit_member():
             data = {key: entry.get().strip() for key, entry in entries.items()}
             data["Gender"] = gender_menu.get()
@@ -471,18 +533,24 @@ class MemberPage(ctk.CTkFrame):
                 return
 
             try:
+                firstname = data["First Name"]
+                lastname = data["Last Name"]
+                username, password = generate_credentials(firstname, lastname)
+
                 # Insert into member
                 new_member_id = orgsystem.get_next_id("member", "memberid")
                 orgsystem.cursor.execute("""
-                    INSERT INTO member (memberid, firstname, lastname, batch, gender, degreeprogram)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO member (memberid, firstname, lastname, batch, gender, degreeprogram, username, password)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     new_member_id,
-                    data["First Name"],
-                    data["Last Name"],
+                    firstname,
+                    lastname,
                     data["Batch"],
                     data["Gender"],
-                    data["Degree Program"]
+                    data["Degree Program"],
+                    username,
+                    password
                 ))
 
                 # Insert into serves
@@ -500,7 +568,7 @@ class MemberPage(ctk.CTkFrame):
                 ))
 
                 orgsystem.db.commit()
-                messagebox.showinfo("Success", "Member added successfully.")
+                messagebox.showinfo("Success", f"Member added successfully.\n\nUsername: {username}\nPassword: {password}")
                 dialog.destroy()
                 self.refresh_members()
             except Exception as e:
@@ -648,21 +716,28 @@ class ReportPage(ctk.CTkFrame):
         self.report_text.insert("end", report)
 
 class UserDashboardPage(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, member_id=None):
         super().__init__(master)
         self.master = master
+        self.member_id = member_id  # Save member_id for later use
 
         ctk.CTkLabel(self, text="User Home", font=("Arial", 18)).pack(pady=20)
         self.welcome_label = ctk.CTkLabel(self, text="")
         self.welcome_label.pack(pady=5)
 
         ctk.CTkButton(self, text="View My Orgs", command=self.show_orgs).pack(pady=5)
-        ctk.CTkButton(self, text="Join an Organization", command=lambda: master.show_frame(JoinOrgPage)).pack(pady=5)
         ctk.CTkButton(self, text="Sign Out", command=self.logout).pack(pady=20)
 
     def tkraise(self, *args, **kwargs):
-        user = self.master.user
-        self.welcome_label.configure(text=f"Welcome, {user['firstname']} {user['lastname']}")
+        # Use member_id to fetch user info if needed
+        # Example: get user from master using member_id, or store user info on master
+        user = self.master.user if hasattr(self.master, "user") else None
+
+        if user:
+            self.welcome_label.configure(text=f"Welcome, {user.get('firstname', '')} {user.get('lastname', '')}")
+        else:
+            self.welcome_label.configure(text="Welcome!")
+
         super().tkraise(*args, **kwargs)
 
     def show_orgs(self):
@@ -706,55 +781,57 @@ class UserDashboardPage(ctk.CTkFrame):
         self.master.user = None
         self.master.show_frame(StartPage)
 
-class JoinOrgPage(ctk.CTkFrame):
-    def __init__(self, master):
-        super().__init__(master)
-        ctk.CTkLabel(self, text="Join an Organization", font=("Arial", 16)).pack(pady=20)
 
-        # Placeholder fields
-        self.org_entry = ctk.CTkEntry(self, placeholder_text="Organization ID")
-        self.org_entry.pack(pady=5)
-        self.role_entry = ctk.CTkEntry(self, placeholder_text="Role")
-        self.role_entry.pack(pady=5)
-        self.status_entry = ctk.CTkEntry(self, placeholder_text="Status")
-        self.status_entry.pack(pady=5)
-        self.committee_entry = ctk.CTkEntry(self, placeholder_text="Committee")
-        self.committee_entry.pack(pady=5)
-        self.sem_entry = ctk.CTkEntry(self, placeholder_text="Semester")
-        self.sem_entry.pack(pady=5)
-        self.year_entry = ctk.CTkEntry(self, placeholder_text="Academic Year")
-        self.year_entry.pack(pady=5)
 
-        ctk.CTkButton(self, text="Join", command=self.join_org).pack(pady=10)
-        ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(UserDashboardPage)).pack(pady=5)
+# class JoinOrgPage(ctk.CTkFrame):
+#     def __init__(self, master):
+#         super().__init__(master)
+#         ctk.CTkLabel(self, text="Join an Organization", font=("Arial", 16)).pack(pady=20)
 
-    def join_org(self):
-        print("DEBUG: self.master.user =", self.master.user)
+#         # Placeholder fields
+#         self.org_entry = ctk.CTkEntry(self, placeholder_text="Organization ID")
+#         self.org_entry.pack(pady=5)
+#         self.role_entry = ctk.CTkEntry(self, placeholder_text="Role")
+#         self.role_entry.pack(pady=5)
+#         self.status_entry = ctk.CTkEntry(self, placeholder_text="Status")
+#         self.status_entry.pack(pady=5)
+#         self.committee_entry = ctk.CTkEntry(self, placeholder_text="Committee")
+#         self.committee_entry.pack(pady=5)
+#         self.sem_entry = ctk.CTkEntry(self, placeholder_text="Semester")
+#         self.sem_entry.pack(pady=5)
+#         self.year_entry = ctk.CTkEntry(self, placeholder_text="Academic Year")
+#         self.year_entry.pack(pady=5)
 
-        try:
-            member_id = self.master.user["member_id"]
-            org_id = int(self.org_entry.get())
-            role = self.role_entry.get()
-            status = self.status_entry.get()
-            committee = self.committee_entry.get()
-            semester = int(self.sem_entry.get())
-            year = self.year_entry.get()
+#         ctk.CTkButton(self, text="Join", command=self.join_org).pack(pady=10)
+#         ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(UserDashboardPage)).pack(pady=5)
 
-            if not all([org_id, role, status, committee, semester, year]):
-                messagebox.showerror("Error", "All fields are required.")
-                return
+#     def join_org(self):
+#         print("DEBUG: self.master.user =", self.master.user)
 
-            orgsystem.cursor.execute("""
-                INSERT INTO serves (memberid, organizationid, role, status, committee, semester, academicyear)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (member_id, org_id, role, status, committee, semester, year))
-            orgsystem.db.commit()
+#         try:
+#             member_id = self.master.user["member_id"]
+#             org_id = int(self.org_entry.get())
+#             role = self.role_entry.get()
+#             status = self.status_entry.get()
+#             committee = self.committee_entry.get()
+#             semester = int(self.sem_entry.get())
+#             year = self.year_entry.get()
 
-            messagebox.showinfo("Success", f"You have successfully joined organization {org_id}")
-            self.master.show_frame(UserDashboardPage)
+#             if not all([org_id, role, status, committee, semester, year]):
+#                 messagebox.showerror("Error", "All fields are required.")
+#                 return
 
-        except Exception as e:
-            messagebox.showerror("Join Failed", str(e))
+#             orgsystem.cursor.execute("""
+#                 INSERT INTO serves (memberid, organizationid, role, status, committee, semester, academicyear)
+#                 VALUES (%s, %s, %s, %s, %s, %s, %s)
+#             """, (member_id, org_id, role, status, committee, semester, year))
+#             orgsystem.db.commit()
+
+#             messagebox.showinfo("Success", f"You have successfully joined organization {org_id}")
+#             self.master.show_frame(UserDashboardPage)
+
+#         except Exception as e:
+#             messagebox.showerror("Join Failed", str(e))
 
 
 class AdminDashboardPage(ctk.CTkFrame):
