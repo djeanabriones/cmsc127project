@@ -1,9 +1,10 @@
 import datetime
 import customtkinter as ctk
-from tkinter import dialog, messagebox, Toplevel
+from tkinter import dialog, messagebox, Toplevel, ttk
 from tkcalendar import Calendar, DateEntry
 import backend as orgsystem  # Your backend module
 from db_connection import db, cursor
+from utility import get_next_id
 
 
 # Initialize DB tables (creates them if not exist)
@@ -46,7 +47,11 @@ class OrgApp(ctk.CTk):
             frame.pack(fill="both", expand=True)
         else:
             frame = self.frames[frame_class]
-            frame.tkraise()
+            if 'organization_id' in kwargs and hasattr(frame, 'set_organization'):
+                frame.set_organization(kwargs['organization_id'])
+        frame.tkraise()
+
+
 
     def show_home(self):
         # current_user assumed to be dict with 'role' and 'memberid'
@@ -301,6 +306,8 @@ class MemberPage(ctk.CTkFrame):
         self.member_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
         self.refresh_members()
+
+        ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(OrgSelectPage)).pack(pady=10)
 
     def open_calendar_popup(self):
         def on_date_selected():
@@ -772,32 +779,59 @@ class OrgSelectPage(ctk.CTkFrame):
 
         ctk.CTkLabel(self, text="Select Organization", font=("Arial", 16)).pack(pady=10)
 
+        # Widgets for setting org
         self.org_entry = ctk.CTkEntry(self, placeholder_text="Enter Organization ID")
         self.org_entry.pack(pady=5)
 
-        ctk.CTkButton(self, text="Set Organization", command=self.set_org).pack(pady=5)
+        self.set_org_btn = ctk.CTkButton(self, text="Set Organization", command=self.set_org)
+        self.set_org_btn.pack(pady=5)
 
         self.new_org_name = ctk.CTkEntry(self, placeholder_text="New Organization Name")
         self.new_org_name.pack(pady=5)
-        ctk.CTkButton(self, text="Add Organization", command=self.add_org).pack(pady=5)
+        self.add_org_btn = ctk.CTkButton(self, text="Add Organization", command=self.add_org)
+        self.add_org_btn.pack(pady=5)
 
-        # ctk.CTkButton(self, text="Manage Members", command=lambda: master.show_frame(AdminMemberPage)).pack(pady=5)
-        # ctk.CTkButton(self, text="Manage Fees", command=lambda: master.show_frame(AdminFeePage)).pack(pady=5)
-        # ctk.CTkButton(self, text="Reports", command=lambda: master.show_frame(AdminReportPage)).pack(pady=5)
-        ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(AdminDashboardPage)).pack(pady=10)
+        # Label for current org - hidden initially
+        self.current_org_label = ctk.CTkLabel(self, text="", font=("Arial", 14, "bold"))
+
+        # Menu buttons (initially not packed)
+        self.manage_members_btn = ctk.CTkButton(self, text="Manage Members",
+                                                command=lambda: master.show_frame(MemberPage, organization_id=master.selected_org))
+        self.manage_fees_btn = ctk.CTkButton(self, text="Manage Fees",
+                                             command=lambda: master.show_frame(AdminFeePage, organization_id=master.selected_org))
+        self.reports_btn = ctk.CTkButton(self, text="Reports",
+                                         command=lambda: master.show_frame(AdminReportPage))
+        self.back_btn = ctk.CTkButton(self, text="Back",
+                                      command=lambda: master.show_frame(AdminDashboardPage))
 
     def set_org(self):
         org_id = self.org_entry.get()
         if not org_id.isdigit():
             messagebox.showerror("Error", "Organization ID must be numeric.")
             return
+
+        # Get organization name from backend
+        try:
+            org_name = orgsystem.get_organization_name(int(org_id))
+            if not org_name:
+                messagebox.showerror("Error", f"Organization ID {org_id} not found.")
+                return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get organization name: {e}")
+            return
+
         self.master.selected_org = int(org_id)
         messagebox.showinfo("Success", f"Managing Organization {org_id}")
-        
-        # Pass the org ID to MemberPage
-        self.master.show_frame(MemberPage, organization_id=self.master.selected_org)
 
+        # Hide input widgets
+        self.hide_org_input_widgets()
 
+        # Show current org label
+        self.current_org_label.configure(text=f"Currently Managing: {org_name}")
+        self.current_org_label.pack(pady=10)
+
+        # Show menu buttons
+        self.show_menu_buttons()
 
     def add_org(self):
         name = self.new_org_name.get()
@@ -809,8 +843,34 @@ class OrgSelectPage(ctk.CTkFrame):
             orgsystem.cursor.execute("INSERT INTO organization (organizationid, organizationname) VALUES (%s, %s)", (org_id, name))
             orgsystem.db.commit()
             messagebox.showinfo("Success", f"Added '{name}' with ID {org_id}")
+
+            # Auto-select the newly added org
+            self.master.selected_org = org_id
+
+            # Hide input widgets
+            self.hide_org_input_widgets()
+
+            # Show current org label
+            self.current_org_label.configure(text=f"Currently Managing: {name}")
+            self.current_org_label.pack(pady=10)
+
+            # Show menu buttons
+            self.show_menu_buttons()
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def hide_org_input_widgets(self):
+        self.org_entry.pack_forget()
+        self.set_org_btn.pack_forget()
+        self.new_org_name.pack_forget()
+        self.add_org_btn.pack_forget()
+
+    def show_menu_buttons(self):
+        self.manage_members_btn.pack(pady=5)
+        self.manage_fees_btn.pack(pady=5)
+        self.reports_btn.pack(pady=5)
+        self.back_btn.pack(pady=10)
+
 
 class AdminOrgDashboardPage(ctk.CTkFrame):
     def __init__(self, master):
@@ -820,7 +880,7 @@ class AdminOrgDashboardPage(ctk.CTkFrame):
         self.org_label.pack(pady=5)
 
         ctk.CTkButton(self, text="Manage Members", command=lambda: master.show_frame(MemberPage)).pack(pady=5)
-        ctk.CTkButton(self, text="Manage Fees", command=lambda: master.show_frame(AdminFeePage)).pack(pady=5)
+        ctk.CTkButton(self, text="Manage Fees", command=lambda: master.show_frame(AdminFeePage, organization_id=master.selected_org)).pack(pady=5)
         ctk.CTkButton(self, text="Generate Report", command=lambda: master.show_frame(AdminReportPage)).pack(pady=5)
         ctk.CTkButton(self, text="Back to Dashboard", command=lambda: master.show_frame(AdminDashboardPage)).pack(pady=10)
 
@@ -828,7 +888,6 @@ class AdminOrgDashboardPage(ctk.CTkFrame):
         selected_org = self.master.selected_org
         self.org_label.configure(text=f"Organization ID: {selected_org}" if selected_org else "No organization selected.")
         super().tkraise(*args, **kwargs)
-
 
 
 class AdminMemberPage(ctk.CTkFrame):
@@ -871,13 +930,374 @@ class AdminMemberPage(ctk.CTkFrame):
     #     except Exception as e:
     #         messagebox.showerror("Error", str(e))
 
-
 class AdminFeePage(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, organization_id=None):
         super().__init__(master)
+        self.organization_id = organization_id
+
         ctk.CTkLabel(self, text="Manage Fees", font=("Arial", 16)).pack(pady=20)
-        ctk.CTkLabel(self, text="Fee management UI goes here...").pack(pady=10)
+
+        # Tabs for sections
+        self.tab_control = ttk.Notebook(self)
+        self.tab_assign = ctk.CTkFrame(self.tab_control)
+        self.tab_record = ctk.CTkFrame(self.tab_control)
+        self.tab_view = ctk.CTkFrame(self.tab_control)
+
+        self.tab_control.add(self.tab_assign, text="Assign Fees")
+        self.tab_control.add(self.tab_record, text="Record Payment")
+        self.tab_control.add(self.tab_view, text="View Records")
+        self.tab_control.pack(expand=1, fill="both")
+
+        self.create_assign_tab()
+        self.create_record_tab()
+        self.create_view_tab()
+
         ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(OrgSelectPage)).pack(pady=10)
+
+    def set_organization(self, org_id):
+        self.organization_id = org_id
+        self.view_fee_records()
+
+    def create_assign_tab(self):
+        frame = self.tab_assign
+
+        ctk.CTkLabel(frame, text="Semester (1 or 2):").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.assign_semester = ctk.CTkEntry(frame)
+        self.assign_semester.grid(row=0, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Academic Year (e.g. 2024-2025):").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.assign_year = ctk.CTkEntry(frame)
+        self.assign_year.grid(row=1, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Amount Due:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        self.assign_amount = ctk.CTkEntry(frame)
+        self.assign_amount.grid(row=2, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Due Date (YYYY-MM-DD):").grid(row=3, column=0, sticky="w", padx=5, pady=5)
+        self.assign_due_date = ctk.CTkEntry(frame)
+        self.assign_due_date.grid(row=3, column=1, padx=5, pady=5)
+
+        ctk.CTkButton(frame, text="Assign Fees", command=self.assign_fees).grid(row=4, column=0, columnspan=2, pady=10)
+
+    def assign_fees(self):
+        # Validate inputs
+        try:
+            semester = int(self.assign_semester.get())
+            if semester not in (1, 2):
+                raise ValueError("Semester must be 1 or 2")
+            year = self.assign_year.get().strip()
+            amount = float(self.assign_amount.get())
+            due_date_str = self.assign_due_date.get().strip()
+            due_date = datetime.datetime.strptime(due_date_str, "%Y-%m-%d").date()
+        except Exception as e:
+            messagebox.showerror("Input Error", f"Invalid input: {e}")
+            return
+
+        org_id = self.organization_id
+        if not org_id:
+            messagebox.showerror("Error", "No organization selected.")
+            return
+
+        try:
+            # Get active members for org
+            cursor.execute("SELECT memberid FROM serves WHERE organizationid = %s AND status = 'active'", (org_id,))
+            members = cursor.fetchall()
+
+            assigned_count = 0
+            for (member_id,) in members:
+                cursor.execute("""
+                    SELECT 1 FROM fee 
+                    WHERE memberid = %s AND organizationid = %s AND semester = %s AND academicyear = %s AND totaldue = %s AND paymentduedate = %s
+                """, (member_id, org_id, semester, year, amount, due_date))
+
+                if cursor.fetchone():
+                    continue  # Skip exact duplicate
+
+
+                fee_id = get_next_id("fee", "feeid")
+                cursor.execute("""
+                    INSERT INTO fee (feeid, semester, academicyear, totaldue, totalpaid, balancedue,
+                                    paymentstatus, paymentduedate, memberid, organizationid)
+                    VALUES (%s, %s, %s, %s, 0, %s, 'unpaid', %s, %s, %s)
+                """, (fee_id, semester, year, amount, amount, due_date, member_id, org_id))
+                assigned_count += 1
+
+            db.commit()
+            # print(f"Inserting fee: fee_id={fee_id}, semester={semester}, year={year}, amount={amount}, due_date={due_date}, member_id={member_id}, org_id={org_id}")
+            messagebox.showinfo("Success", f"Fees assigned to {assigned_count} members.")
+        except Exception as e:
+            db.rollback()
+            messagebox.showerror("Database Error", str(e))
+
+    def create_record_tab(self):
+        frame = self.tab_record
+
+        ctk.CTkLabel(frame, text="Member ID:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.record_member_id = ctk.CTkEntry(frame)
+        self.record_member_id.grid(row=0, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Semester (1 or 2):").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.record_semester = ctk.CTkEntry(frame)
+        self.record_semester.grid(row=1, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Academic Year:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        self.record_year = ctk.CTkEntry(frame)
+        self.record_year.grid(row=2, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Amount Paid:").grid(row=3, column=0, sticky="w", padx=5, pady=5)
+        self.record_amount = ctk.CTkEntry(frame)
+        self.record_amount.grid(row=3, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text="Payment Date (YYYY-MM-DD):").grid(row=4, column=0, sticky="w", padx=5, pady=5)
+        self.record_payment_date = ctk.CTkEntry(frame)
+        self.record_payment_date.grid(row=4, column=1, padx=5, pady=5)
+
+        ctk.CTkButton(frame, text="Record Payment", command=self.record_payment).grid(row=5, column=0, columnspan=2, pady=10)
+
+    def record_payment(self):
+        try:
+            member_id = int(self.record_member_id.get())
+            semester = int(self.record_semester.get())
+            year = self.record_year.get().strip()
+            amount = float(self.record_amount.get())
+            payment_date_str = self.record_payment_date.get().strip()
+            payment_date = datetime.datetime.strptime(payment_date_str, "%Y-%m-%d").date()
+        except Exception as e:
+            messagebox.showerror("Input Error", f"Invalid input: {e}")
+            return
+
+        org_id = self.organization_id
+        if not org_id:
+            messagebox.showerror("Error", "No organization selected.")
+            return
+
+        try:
+            cursor.execute("""
+                SELECT feeid, totaldue, totalpaid FROM fee
+                WHERE memberid = %s AND organizationid = %s AND semester = %s AND academicyear = %s
+            """, (member_id, org_id, semester, year))
+            fee = cursor.fetchone()
+            if not fee:
+                messagebox.showerror("Error", "No fee record found for this member.")
+                return
+
+            new_paid = fee[2] + amount
+            new_balance = fee[1] - new_paid
+            status = 'paid' if new_balance <= 0 else 'unpaid'
+
+            cursor.execute("""
+                UPDATE fee SET totalpaid = %s, balancedue = %s, paymentstatus = %s, datepaid = %s
+                WHERE feeid = %s
+            """, (new_paid, new_balance, status, payment_date, fee[0]))
+            db.commit()
+            messagebox.showinfo("Success", "Payment recorded.")
+        except Exception as e:
+            db.rollback()
+            messagebox.showerror("Database Error", str(e))
+
+    def create_view_tab(self):
+        frame = self.tab_view
+
+        filter_frame = ctk.CTkFrame(frame)
+        filter_frame.pack(pady=10, fill="x")
+
+        ctk.CTkLabel(filter_frame, text="Semester:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.view_semester = ctk.CTkEntry(filter_frame)
+        self.view_semester.grid(row=0, column=1, padx=5, pady=5)
+
+        ctk.CTkLabel(filter_frame, text="Academic Year:").grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        self.view_year = ctk.CTkEntry(filter_frame)
+        self.view_year.grid(row=0, column=3, padx=5, pady=5)
+
+        ctk.CTkLabel(filter_frame, text="Status:").grid(row=0, column=4, sticky="w", padx=5, pady=5)
+        self.view_status = ctk.CTkEntry(filter_frame)
+        self.view_status.grid(row=0, column=5, padx=5, pady=5)
+
+        # New: As of Date input
+        ctk.CTkLabel(filter_frame, text="As of Date (YYYY-MM-DD):").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.view_as_of_date = ctk.CTkEntry(filter_frame)
+        self.view_as_of_date.grid(row=1, column=1, padx=5, pady=5)
+
+        # New: Late Payments checkbox
+        self.view_late_only = ctk.CTkCheckBox(filter_frame, text="Late Payments Only")
+        self.view_late_only.grid(row=1, column=2, padx=5, pady=5)
+
+        self.total_paid_label = ctk.CTkLabel(frame, text="Total Paid: 0.00")
+        self.total_paid_label.pack(pady=2)
+
+        self.total_unpaid_label = ctk.CTkLabel(frame, text="Total Unpaid: 0.00")
+        self.total_unpaid_label.pack(pady=2)
+
+        ctk.CTkButton(filter_frame, text="Filter", command=self.view_fee_records).grid(row=0, column=6, padx=5, pady=5)
+
+        # New: View Totals button
+        ctk.CTkButton(filter_frame, text="View Totals", command=self.view_totals).grid(row=1, column=3, padx=5, pady=5)
+
+        # New: View Highest Debt button
+        ctk.CTkButton(filter_frame, text="View Highest Debt", command=self.view_highest_debt).grid(row=1, column=4, padx=5, pady=5)
+
+        self.tree = ttk.Treeview(frame, columns=(
+            "ID", "First Name", "Last Name", "Semester", "Academic Year", "Total Due", "Total Paid",
+            "Balance Due", "Status", "Due Date", "Date Paid"
+        ), show="headings")
+
+        for col in self.tree["columns"]:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=100, anchor="center")
+
+        self.tree.pack(fill="both", expand=True, pady=10)
+
+        self.view_semester.delete(0, "end")
+        self.view_year.delete(0, "end")
+        self.view_status.delete(0, "end")
+        self.view_as_of_date.delete(0, "end")
+        self.view_late_only.deselect()
+
+        self.view_fee_records()
+
+    def tkraise(self, *args, **kwargs):
+        super().tkraise(*args, **kwargs)
+        if self.organization_id:
+            self.view_fee_records()
+        else:
+            for row in self.tree.get_children():
+                self.tree.delete(row)
+
+    def view_fee_records(self):
+        org_id = self.organization_id
+        if not org_id:
+            return
+
+        semester = self.view_semester.get().strip()
+        year = self.view_year.get().strip()
+        status = self.view_status.get().strip()
+        as_of_date = self.view_as_of_date.get().strip()
+        late_only = self.view_late_only.get()
+
+        query = """
+            SELECT m.memberid, m.firstname, m.lastname,
+                   f.semester, f.academicyear, f.totaldue, f.totalpaid,
+                   (f.totaldue - f.totalpaid) AS balancedue,
+                   f.paymentstatus, f.paymentduedate, f.datepaid
+            FROM fee f
+            JOIN member m ON f.memberid = m.memberid
+            WHERE f.organizationid = %s
+        """
+        params = [org_id]
+
+        if semester:
+            query += " AND f.semester = %s"
+            params.append(semester)
+        if year:
+            query += " AND f.academicyear = %s"
+            params.append(year)
+        if status:
+            query += " AND f.paymentstatus = %s"
+            params.append(status)
+        if late_only:
+            query += " AND f.datepaid IS NOT NULL AND f.datepaid > f.paymentduedate"
+        if as_of_date:
+            query += " AND f.paymentduedate <= %s"
+            params.append(as_of_date)
+
+        query += " ORDER BY f.academicyear DESC, f.semester DESC"
+
+        try:
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+        except Exception as e:
+            messagebox.showerror("Database Error", str(e))
+            return
+
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+
+        for row in rows:
+            self.tree.insert("", "end", values=row)
+
+    def view_totals(self):
+        org_id = self.organization_id
+        if not org_id:
+            messagebox.showerror("Error", "No organization selected.")
+            return
+
+        as_of_date_str = self.view_as_of_date.get().strip()
+
+        try:
+            as_of_date = datetime.datetime.strptime(as_of_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            messagebox.showerror("Input Error", "Invalid date format. Use YYYY-MM-DD.")
+            return
+
+        try:
+            # cursor.execute("""
+            #     SELECT
+            #         COALESCE(SUM(CASE WHEN datepaid <= %s THEN totalpaid ELSE 0 END), 0) AS total_paid_by_date,
+            #         COALESCE(SUM(CASE WHEN paymentstatus = 'unpaid' THEN balancedue ELSE 0 END), 0) AS total_unpaid_by_date
+            #     FROM fee
+            #     WHERE organizationid = %s
+            # """, (as_of_date, as_of_date, org_id))
+
+            cursor.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN paymentstatus = 'paid' THEN totalpaid ELSE 0 END), 0) AS total_paid,
+                    COALESCE(SUM(CASE WHEN paymentstatus = 'unpaid' THEN balancedue ELSE 0 END), 0) AS total_unpaid
+                FROM fee
+                WHERE organizationid = %s
+            """, (org_id,))
+
+            result = cursor.fetchone()
+
+            total_paid = result[0]
+            total_unpaid = result[1]
+
+            if not hasattr(self, "total_paid_label"):
+                self.total_paid_label = ctk.CTkLabel(self.tab_view, text="")
+                self.total_paid_label.pack(pady=(10,0))
+            if not hasattr(self, "total_unpaid_label"):
+                self.total_unpaid_label = ctk.CTkLabel(self.tab_view, text="")
+                self.total_unpaid_label.pack()
+
+            self.total_paid_label.configure(text=f"Total Paid (as of {as_of_date_str}): {total_paid:.2f}")
+            self.total_unpaid_label.configure(text=f"Total Unpaid (as of {as_of_date_str}): {total_unpaid:.2f}")
+
+        except Exception as e:
+            messagebox.showerror("Database Error", str(e))
+
+
+    def view_highest_debt(self):
+        org_id = self.organization_id
+        if not org_id:
+            messagebox.showerror("Error", "No organization selected.")
+            return
+
+        semester = self.view_semester.get().strip()
+        if not semester:
+            messagebox.showerror("Input Error", "Please enter a semester to find highest debt.")
+            return
+
+        try:
+            cursor.execute("""
+                WITH max_debt AS (
+                    SELECT MAX(balancedue) AS max_bal FROM fee WHERE organizationid = %s AND semester = %s
+                )
+                SELECT m.memberid, m.firstname, m.lastname, f.balancedue
+                FROM fee f
+                JOIN member m ON f.memberid = m.memberid, max_debt md
+                WHERE f.organizationid = %s AND f.semester = %s AND f.balancedue = md.max_bal
+            """, (org_id, semester, org_id, semester))
+            results = cursor.fetchall()
+            if not results:
+                messagebox.showinfo("Highest Debt", "No records found.")
+                return
+
+            msg = "Member(s) with highest debt:\n"
+            for memberid, fname, lname, debt in results:
+                msg += f"{memberid} - {fname} {lname}: {debt}\n"
+
+            messagebox.showinfo("Highest Debt", msg)
+        except Exception as e:
+            messagebox.showerror("Database Error", str(e))
 
 class AdminReportPage(ctk.CTkFrame):
     def __init__(self, master):

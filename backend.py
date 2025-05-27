@@ -393,5 +393,54 @@ def search_members(org_id, query):
     cursor.execute(sql, (org_id, query, query, query))
     return cursor.fetchall()
 
+def get_organization_name(org_id):
+    cursor.execute("SELECT organizationname FROM organization WHERE organizationid = %s", (org_id,))
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    return None
+
+def view_totals(self):
+    org_id = self.organization_id
+    if not org_id:
+        messagebox.showerror("Error", "No organization selected.")
+        return
+
+    as_of_date_str = self.view_as_of_date.get().strip()
+
+    try:
+        as_of_date = datetime.datetime.strptime(as_of_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        messagebox.showerror("Input Error", "Invalid date format. Use YYYY-MM-DD.")
+        return
+
+    try:
+        cursor.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN datepaid <= %s THEN totalpaid ELSE 0 END), 0) AS total_paid_by_date,
+                COALESCE(SUM(CASE WHEN paymentstatus = 'unpaid' AND paymentduedate <= %s THEN balancedue ELSE 0 END), 0) AS total_unpaid_by_date
+            FROM fee
+            WHERE organizationid = %s
+        """, (as_of_date, as_of_date, org_id))
+
+        result = cursor.fetchone()
+
+        total_paid = result[0]
+        total_unpaid = result[1]
+
+        if not hasattr(self, "total_paid_label"):
+            self.total_paid_label = ctk.CTkLabel(self.tab_view, text="")
+            self.total_paid_label.pack(pady=(10,0))
+        if not hasattr(self, "total_unpaid_label"):
+            self.total_unpaid_label = ctk.CTkLabel(self.tab_view, text="")
+            self.total_unpaid_label.pack()
+
+        self.total_paid_label.configure(text=f"Total Paid (as of {as_of_date_str}): {total_paid:.2f}")
+        self.total_unpaid_label.configure(text=f"Total Unpaid (as of {as_of_date_str}): {total_unpaid:.2f}")
+
+    except Exception as e:
+        messagebox.showerror("Database Error", str(e))
+
+
 if __name__ == "__main__":
 	landing_page()
