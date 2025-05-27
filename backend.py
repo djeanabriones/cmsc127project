@@ -359,7 +359,30 @@ def landing_page():
 		else:
 			print("Invalid choice")
 			input("Press Enter to continue")
-			
+
+def delete_member(member_id, org_id):
+    try:
+        # Delete membership records (child table)
+        cursor.execute("""
+            DELETE FROM serves WHERE memberid = %s AND organizationid = %s
+        """, (member_id, org_id))
+
+        # Delete fees records (child table)
+        cursor.execute("""
+            DELETE FROM fee WHERE memberid = %s AND organizationid = %s
+        """, (member_id, org_id))
+
+        # Finally, delete member (parent table)
+        cursor.execute("""
+            DELETE FROM member WHERE memberid = %s
+        """, (member_id,))
+
+        db.commit()
+        print("Member and all related records deleted successfully.")
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        db.rollback()
+
 
 if __name__ == "__main__":
 	landing_page()

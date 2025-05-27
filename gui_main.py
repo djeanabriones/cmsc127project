@@ -596,7 +596,7 @@ class MemberPage(ctk.CTkFrame):
     def delete_member(self, member):
         confirm = messagebox.askyesno("Confirm Delete", f"Delete member {member[1]}?")
         if confirm:
-            orgsystem.delete_member(member[0])
+            orgsystem.delete_member(member[0], self.organization_id)
             self.refresh_members()
 
 
