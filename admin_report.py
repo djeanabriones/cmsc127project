@@ -49,7 +49,7 @@ def admin_reports():
 			print("Error: Invalid choice")
 			input("Press Enter to continue")
 
-# Individual report functions
+# Check Individual report functions 
 def admin_report_members_by_filters():
 	clear_console()
 	print("REPORT 1: MEMBERS BY FILTERS")
@@ -103,6 +103,7 @@ def admin_report_members_by_filters():
 	
 	show_table(query, params)
 	input("Press Enter to continue")
+
 
 def admin_report_unpaid_members():
 	clear_console()
