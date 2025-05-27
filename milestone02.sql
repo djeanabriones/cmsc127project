@@ -48,7 +48,7 @@ CREATE TABLE serves (
     status VARCHAR(20), -- active, inactive, expelled, suspended, alumni
     committee VARCHAR(50),
     semester INT(1),
-    academicyear INT(4),
+    academicyear VARCHAR(9),
     CONSTRAINT serves_memberid_fk FOREIGN KEY (memberid) REFERENCES member(memberid),
     CONSTRAINT serves_organizationid_fk FOREIGN KEY (organizationid) REFERENCES organization(organizationid)
 );
