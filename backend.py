@@ -134,16 +134,6 @@ def set_role(role, memberid):
     cursor.execute(query, (role, memberid))
     db.commit()
 
-# def get_user_org(member_id):
-# 	cursor.execute("""
-# 		SELECT organizationid FROM serves
-# 		WHERE memberid = %s
-# 		ORDER BY academicyear DESC, semester DESC
-# 		LIMIT 1
-# 	""", (member_id,))
-# 	result = cursor.fetchone()
-# 	return result[0] if result else None
-
 def get_user_organizations(member_id):
 	cursor.execute("""
 		SELECT o.organizationid, o.organizationname
@@ -198,19 +188,44 @@ def delete_member(memberid):
     cursor.execute("DELETE FROM member WHERE memberid = %s", (memberid,))
     db.commit()
 
-def get_members_by_org(organization_id):
+def get_members_by_org(org_id):
     try:
         query = """
-            SELECT m.memberid, CONCAT(m.firstname, ' ', m.lastname) AS name, mo.role, mo.status
+            SELECT m.memberid,
+                   CONCAT(m.firstname, ' ', m.lastname) AS name,
+                   s.role,
+                   s.status,
+                   m.gender,
+                   m.degreeprogram,
+                   m.batch,
+                   s.committee
             FROM member m
-            JOIN membership mo ON m.memberid = mo.memberid
-            WHERE mo.organizationid = %s
+            JOIN serves s ON m.memberid = s.memberid
+            WHERE s.organizationid = %s
         """
-        cursor.execute(query, (organization_id,))
+        cursor.execute(query, (org_id,))
         return cursor.fetchall()
     except Exception as e:
         print("Error in get_members_by_org:", e)
         return []
+    
+def update_member_full(memberid, org_id, firstname, lastname, batch, gender, degreeprogram, role, status):
+    try:
+        cursor.execute("""
+            UPDATE member SET firstname=%s, lastname=%s, batch=%s, gender=%s, degreeprogram=%s
+            WHERE memberid=%s
+        """, (firstname, lastname, batch, gender, degreeprogram, memberid))
+
+        cursor.execute("""
+            UPDATE serves SET role=%s, status=%s
+            WHERE memberid=%s AND organizationid=%s
+        """, (role, status, memberid, org_id))
+
+        db.commit()
+        return {"success": True}
+    except mysql.connector.Error as err:
+        db.rollback()
+        return {"success": False, "error": str(err)}
 
 
 # Landing Page

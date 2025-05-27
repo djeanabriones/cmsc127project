@@ -1,6 +1,8 @@
 import customtkinter as ctk
-from tkinter import messagebox
+from tkinter import dialog, messagebox
 import backend as orgsystem  # Your backend module
+from db_connection import db, cursor
+
 
 # Initialize DB tables (creates them if not exist)
 orgsystem.create_tables()
@@ -11,7 +13,11 @@ class OrgApp(ctk.CTk):
         self.selected_org = None
         self.title("Student Org Management")
         self.geometry("600x400")
-        self.resizable(False, False)
+        # self.resizable(False, False)
+        self.attributes("-fullscreen", True)
+       # Optional: Exit fullscreen with ESC
+        self.bind("<Escape>", lambda e: self.attributes("-fullscreen", False))
+
         self.user = None
         self.current_user = None  # Track current signed in user
 
@@ -207,13 +213,45 @@ class MemberPage(ctk.CTkFrame):
         print("MemberPage loaded")
         super().__init__(master)
         self.master = master
-        self.organization_id = organization_id  # Store it for use
+        self.organization_id = organization_id
 
         # Add Member Button
         self.add_member_btn = ctk.CTkButton(self, text="Add Member", command=self.open_add_member_dialog)
         self.add_member_btn.pack(pady=10)
 
-        # Scrollable Frame for Table
+        # --- FILTERS ---
+        self.filters_frame = ctk.CTkFrame(self)
+        self.filters_frame.pack(fill="x", padx=20, pady=(10, 0))
+
+        # Define filters here...
+        self.role_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "President", "Vice President", "Secretary", "Treasurer", "Member"], command=lambda _: self.refresh_members())
+        self.role_filter.set("All")
+        self.role_filter.pack(side="left", padx=5)
+
+        self.status_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "Active", "Inactive"], command=lambda _: self.refresh_members())
+        self.status_filter.set("All")
+        self.status_filter.pack(side="left", padx=5)
+
+        self.gender_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "Male", "Female"], command=lambda _: self.refresh_members())
+        self.gender_filter.set("All")
+        self.gender_filter.pack(side="left", padx=5)
+
+        self.degree_filter = ctk.CTkEntry(self.filters_frame, placeholder_text="Degree Program")
+        self.degree_filter.pack(side="left", padx=5)
+        self.degree_filter.bind("<KeyRelease>", lambda event: self.refresh_members())
+
+        self.batch_filter = ctk.CTkEntry(self.filters_frame, placeholder_text="Batch")
+        self.batch_filter.pack(side="left", padx=5)
+        self.batch_filter.bind("<KeyRelease>", lambda event: self.refresh_members())
+
+        self.committee_filter = ctk.CTkEntry(self.filters_frame, placeholder_text="Committee")
+        self.committee_filter.pack(side="left", padx=5)
+        self.committee_filter.bind("<KeyRelease>", lambda event: self.refresh_members())
+
+        self.reset_btn = ctk.CTkButton(self.filters_frame, text="Reset", command=self.reset_filters)
+        self.reset_btn.pack(side="left", padx=5)
+
+        # ✅ Create the member frame **before** calling refresh_members
         self.member_frame = ctk.CTkScrollableFrame(self)
         self.member_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -223,35 +261,242 @@ class MemberPage(ctk.CTkFrame):
         for widget in self.member_frame.winfo_children():
             widget.destroy()
 
-        headers = ["Mem ID", "Name", "Role", "Status", "Edit", "Delete"]
+        headers = ["Mem ID", "Name", "Role", "Status", "Gender", "Degree", "Batch", "Committee", "Edit", "Delete"]
         for col, text in enumerate(headers):
             label = ctk.CTkLabel(self.member_frame, text=text, font=("Arial", 12, "bold"))
             label.grid(row=0, column=col, padx=5, pady=5)
 
-        # Now only fetch members for the selected organization
-        members = orgsystem.get_members_by_org(self.organization_id)
+        all_members = orgsystem.get_members_by_org(self.organization_id)
 
-        for row, member in enumerate(members, start=1):
-            mem_id, name, role, status = member
+        # Gather filter values
+        role_val = self.role_filter.get()
+        status_val = self.status_filter.get()
+        gender_val = self.gender_filter.get()
+        degree_val = self.degree_filter.get().strip().lower()
+        batch_val = self.batch_filter.get().strip()
+        committee_val = self.committee_filter.get().strip().lower()
 
+        # Filter logic
+        filtered_members = []
+        for member in all_members:
+            mem_id, name, role, status, gender, degree, batch, committee = member
+
+            if role_val != "All" and role != role_val:
+                continue
+            if status_val != "All" and status != status_val:
+                continue
+            if gender_val != "All" and gender != gender_val:
+                continue
+            if degree_val and degree_val not in degree.lower():
+                continue
+            if batch_val and str(batch) != batch_val:
+                continue
+            if committee_val and committee_val not in (committee or "").lower():
+                continue
+
+            filtered_members.append(member)
+
+        # Display filtered results
+        for row, member in enumerate(filtered_members, start=1):
+            mem_id, name, role, status, gender, degree, batch, committee = member
             ctk.CTkLabel(self.member_frame, text=str(mem_id)).grid(row=row, column=0, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=name).grid(row=row, column=1, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=role).grid(row=row, column=2, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=status).grid(row=row, column=3, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=gender).grid(row=row, column=4, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=degree).grid(row=row, column=5, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=str(batch)).grid(row=row, column=6, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=committee or "").grid(row=row, column=7, padx=5, pady=2)
 
             edit_btn = ctk.CTkButton(self.member_frame, text="Edit", width=50, command=lambda m=member: self.edit_member(m))
-            edit_btn.grid(row=row, column=4, padx=5)
+            edit_btn.grid(row=row, column=8, padx=5)
 
             del_btn = ctk.CTkButton(self.member_frame, text="Delete", width=50, fg_color="red", command=lambda m=member: self.delete_member(m))
-            del_btn.grid(row=row, column=5, padx=5)
+            del_btn.grid(row=row, column=9, padx=5)
+
+    def reset_filters(self):
+        self.role_filter.set("All")
+        self.status_filter.set("All")
+        self.gender_filter.set("All")
+        self.degree_filter.delete(0, "end")
+        self.batch_filter.delete(0, "end")
+        self.committee_filter.delete(0, "end")
+        self.refresh_members()
 
     def open_add_member_dialog(self):
-        # You can implement a popup dialog here for adding member
-        messagebox.showinfo("Add", "Show add member form here")
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Add Member")
+
+        # Text Entry Fields
+        labels = ["First Name", "Last Name", "Batch", "Degree Program", "Committee", "Semester", "Academic Year"]
+        entries = {}
+
+        for i, label in enumerate(labels):
+            ctk.CTkLabel(dialog, text=label).grid(row=i, column=0, padx=10, pady=5, sticky="e")
+            entry = ctk.CTkEntry(dialog)
+            entry.grid(row=i, column=1, padx=10, pady=5)
+            entries[label] = entry
+
+        # Dropdowns
+        gender_options = ["Male", "Female"]
+        role_options = ["President", "Vice President", "Secretary", "Treasurer", "Member"]
+        status_options = ["Active", "Inactive", "Alumni"]
+
+        gender_label_row = len(labels)
+        role_label_row = gender_label_row + 1
+        status_label_row = role_label_row + 1
+        button_row = status_label_row + 1
+
+        ctk.CTkLabel(dialog, text="Gender").grid(row=gender_label_row, column=0, padx=10, pady=5, sticky="e")
+        gender_menu = ctk.CTkOptionMenu(dialog, values=gender_options)
+        gender_menu.grid(row=gender_label_row, column=1, padx=10, pady=5)
+
+        ctk.CTkLabel(dialog, text="Role").grid(row=role_label_row, column=0, padx=10, pady=5, sticky="e")
+        role_menu = ctk.CTkOptionMenu(dialog, values=role_options)
+        role_menu.grid(row=role_label_row, column=1, padx=10, pady=5)
+
+        ctk.CTkLabel(dialog, text="Status").grid(row=status_label_row, column=0, padx=10, pady=5, sticky="e")
+        status_menu = ctk.CTkOptionMenu(dialog, values=status_options)
+        status_menu.grid(row=status_label_row, column=1, padx=10, pady=5)
+
+        def submit_member():
+            data = {key: entry.get().strip() for key, entry in entries.items()}
+            data["Gender"] = gender_menu.get()
+            data["Role"] = role_menu.get()
+            data["Status"] = status_menu.get()
+
+            if not all(data.values()):
+                messagebox.showerror("Error", "Please fill in all fields.")
+                return
+
+            try:
+                # Insert into member
+                new_member_id = orgsystem.get_next_id("member", "memberid")
+                orgsystem.cursor.execute("""
+                    INSERT INTO member (memberid, firstname, lastname, batch, gender, degreeprogram)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    new_member_id,
+                    data["First Name"],
+                    data["Last Name"],
+                    data["Batch"],
+                    data["Gender"],
+                    data["Degree Program"]
+                ))
+
+                # Insert into serves
+                orgsystem.cursor.execute("""
+                    INSERT INTO serves (memberid, organizationid, role, status, committee, semester, academicyear)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    new_member_id,
+                    self.organization_id,
+                    data["Role"],
+                    data["Status"],
+                    data["Committee"],
+                    data["Semester"],
+                    data["Academic Year"]
+                ))
+
+                orgsystem.db.commit()
+                messagebox.showinfo("Success", "Member added successfully.")
+                dialog.destroy()
+                self.refresh_members()
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+                orgsystem.db.rollback()
+
+        ctk.CTkButton(dialog, text="Submit", command=submit_member).grid(row=button_row, columnspan=2, pady=10)
 
     def edit_member(self, member):
-        # Open dialog to edit member
-        messagebox.showinfo("Edit", f"Edit Member {member[0]} - {member[1]}")
+        edit_window = ctk.CTkToplevel(self)
+        edit_window.title("Edit Member")
+
+        memberid, name, role, status = member
+        firstname, lastname = name.split(' ', 1)
+
+        # Fetch additional member details from DB
+        org_id = self.organization_id
+        cursor.execute("SELECT batch, gender, degreeprogram FROM member WHERE memberid = %s", (memberid,))
+        result = cursor.fetchone()
+        if not result:
+            messagebox.showerror("Error", "Member not found.")
+            return
+        batch, gender, degreeprogram = result
+
+        # Labels & Entry Fields
+        ctk.CTkLabel(edit_window, text="First Name").pack()
+        fname_entry = ctk.CTkEntry(edit_window)
+        fname_entry.insert(0, firstname)
+        fname_entry.pack()
+
+        ctk.CTkLabel(edit_window, text="Last Name").pack()
+        lname_entry = ctk.CTkEntry(edit_window)
+        lname_entry.insert(0, lastname)
+        lname_entry.pack()
+
+        ctk.CTkLabel(edit_window, text="Batch").pack()
+        batch_entry = ctk.CTkEntry(edit_window)
+        batch_entry.insert(0, str(batch))
+        batch_entry.pack()
+
+        ctk.CTkLabel(edit_window, text="Degree Program").pack()
+        degree_entry = ctk.CTkEntry(edit_window)
+        degree_entry.insert(0, degreeprogram)
+        degree_entry.pack()
+
+        ctk.CTkLabel(edit_window, text="Gender").pack()
+        gender_menu = ctk.CTkOptionMenu(edit_window, values=["Male", "Female"])
+        gender_menu.set(gender)
+        gender_menu.pack()
+
+        ctk.CTkLabel(edit_window, text="Role").pack()
+        role_menu = ctk.CTkOptionMenu(edit_window, values=["President", "Vice President", "Secretary", "Treasurer", "Member"])
+        role_menu.set(role)
+        role_menu.pack()
+
+        ctk.CTkLabel(edit_window, text="Status").pack()
+        status_menu = ctk.CTkOptionMenu(edit_window, values=["Active", "Inactive"])
+        status_menu.set(status)
+        status_menu.pack()
+
+        def save_changes():
+            try:
+                updated_firstname = fname_entry.get().strip()
+                updated_lastname = lname_entry.get().strip()
+                updated_batch = int(batch_entry.get())
+                updated_degree = degree_entry.get().strip()
+                updated_gender = gender_menu.get()
+                updated_role = role_menu.get()
+                updated_status = status_menu.get()
+
+                result = orgsystem.update_member_full(
+                    memberid=memberid,
+                    org_id=org_id,
+                    firstname=updated_firstname,
+                    lastname=updated_lastname,
+                    batch=updated_batch,
+                    gender=updated_gender,
+                    degreeprogram=updated_degree,
+                    role=updated_role,
+                    status=updated_status,
+                )
+
+                if result["success"]:
+                    messagebox.showinfo("Success", "Member updated successfully.")
+                    edit_window.destroy()
+                    self.refresh_members()
+                else:
+                    messagebox.showerror("Error", f"Update failed: {result['error']}")
+
+            except ValueError:
+                messagebox.showerror("Input Error", "Please enter a valid number for Batch.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+                print("Error updating member:", e)
+
+        ctk.CTkButton(edit_window, text="Save", command=save_changes).pack(pady=10)
+
 
     def delete_member(self, member):
         confirm = messagebox.askyesno("Confirm Delete", f"Delete member {member[1]}?")
