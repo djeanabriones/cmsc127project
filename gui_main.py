@@ -220,9 +220,17 @@ class MemberPage(ctk.CTkFrame):
         self.add_member_btn = ctk.CTkButton(self, text="Add Member", command=self.open_add_member_dialog)
         self.add_member_btn.pack(pady=10)
 
+        self.show_chart_btn = ctk.CTkButton(self, text="Show Active/Inactive Chart", command=self.show_status_chart)
+        self.show_chart_btn.pack(pady=10)
+
         # --- FILTERS ---
         self.filters_frame = ctk.CTkFrame(self)
         self.filters_frame.pack(fill="x", padx=20, pady=(10, 0))
+
+        # Add number of semesters input
+        self.semesters_var = ctk.StringVar(value="4")  # default 4 semesters
+        self.semesters_entry = ctk.CTkEntry(self.filters_frame, textvariable=self.semesters_var, width=50)
+        self.semesters_entry.pack(side="left", padx=5)
 
         # Role filter
         self.role_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "President", "Vice President", "Secretary", "Treasurer", "Member"], command=lambda _: self.refresh_members())
@@ -574,6 +582,15 @@ class MemberPage(ctk.CTkFrame):
 
         ctk.CTkButton(edit_window, text="Save", command=save_changes).pack(pady=10)
 
+    def show_status_chart(self):
+        try:
+            n = int(self.semesters_var.get())
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid number for semesters")
+            return
+
+        data = orgsystem.get_active_inactive_percentages(self.organization_id, n)
+        orgsystem.show_overall_status_chart(data)
 
 
     def delete_member(self, member):

@@ -8,6 +8,8 @@ from admin_dashboard import admin_menu
 from db_connection import db, cursor
 from president import president_menu
 from utility import clear_console, validate_input, get_next_id, db, cursor
+import matplotlib.pyplot as plt
+
 
 
 # Database connection
@@ -275,6 +277,64 @@ def get_members_by_org_filtered(self, organization_id, status=None, as_of_date=N
     self.cursor.execute(query, tuple(params))
     return self.cursor.fetchall()
 
+def get_active_inactive_percentages(org_id, n):
+	query = """
+		WITH semester_dates AS (
+            SELECT DISTINCT
+                semester,
+                academicyear,
+                STR_TO_DATE(
+                CASE semester
+                    WHEN 1 THEN CONCAT(LEFT(academicyear, 4), '-08-01')
+                    WHEN 2 THEN CONCAT(RIGHT(academicyear, 4), '-01-01')
+                END,
+                '%Y-%m-%d'
+                ) AS sort_date
+            FROM serves
+            WHERE organizationid = %s
+        ),
+		last_n_semesters AS (
+		  SELECT semester, academicyear
+		  FROM semester_dates
+		  ORDER BY sort_date DESC
+		  LIMIT %s
+		),
+		status_counts AS (
+		  SELECT 
+			s.status,
+			COUNT(*) AS count
+		  FROM serves s
+		  JOIN last_n_semesters lns
+			ON s.semester = lns.semester AND s.academicyear = lns.academicyear
+		  WHERE s.organizationid = %s 
+			AND s.status IN ('Active', 'Inactive')
+		  GROUP BY s.status
+		),
+		total_active_inactive AS (
+		  SELECT SUM(count) AS total
+		  FROM status_counts
+		)
+		SELECT 
+		  sc.status, 
+		  sc.count,
+		  ROUND(100.0 * sc.count / t.total, 2) AS percentage
+		FROM status_counts sc
+		CROSS JOIN total_active_inactive t
+		ORDER BY sc.status DESC
+	"""
+	cursor.execute(query, (org_id, n, org_id))
+	return cursor.fetchall()  # [(status, count, percent), ...]
+
+def show_overall_status_chart(data):
+	statuses = [row[0] for row in data]
+	counts = [row[1] for row in data]
+	percentages = [row[2] for row in data]
+
+	plt.figure(figsize=(6,6))
+	plt.pie(counts, labels=[f"{s} ({p}%)" for s,p in zip(statuses, percentages)], autopct='%1.1f%%', startangle=90)
+	plt.title("Active vs Inactive Members (Last N Semesters)")
+	plt.axis('equal')
+	plt.show()
 
 
 # Landing Page
