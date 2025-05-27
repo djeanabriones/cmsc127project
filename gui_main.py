@@ -777,59 +777,6 @@ class UserDashboardPage(ctk.CTkFrame):
         self.master.user = None
         self.master.show_frame(StartPage)
 
-
-
-# class JoinOrgPage(ctk.CTkFrame):
-#     def __init__(self, master):
-#         super().__init__(master)
-#         ctk.CTkLabel(self, text="Join an Organization", font=("Arial", 16)).pack(pady=20)
-
-#         # Placeholder fields
-#         self.org_entry = ctk.CTkEntry(self, placeholder_text="Organization ID")
-#         self.org_entry.pack(pady=5)
-#         self.role_entry = ctk.CTkEntry(self, placeholder_text="Role")
-#         self.role_entry.pack(pady=5)
-#         self.status_entry = ctk.CTkEntry(self, placeholder_text="Status")
-#         self.status_entry.pack(pady=5)
-#         self.committee_entry = ctk.CTkEntry(self, placeholder_text="Committee")
-#         self.committee_entry.pack(pady=5)
-#         self.sem_entry = ctk.CTkEntry(self, placeholder_text="Semester")
-#         self.sem_entry.pack(pady=5)
-#         self.year_entry = ctk.CTkEntry(self, placeholder_text="Academic Year")
-#         self.year_entry.pack(pady=5)
-
-#         ctk.CTkButton(self, text="Join", command=self.join_org).pack(pady=10)
-#         ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(UserDashboardPage)).pack(pady=5)
-
-#     def join_org(self):
-#         print("DEBUG: self.master.user =", self.master.user)
-
-#         try:
-#             member_id = self.master.user["member_id"]
-#             org_id = int(self.org_entry.get())
-#             role = self.role_entry.get()
-#             status = self.status_entry.get()
-#             committee = self.committee_entry.get()
-#             semester = int(self.sem_entry.get())
-#             year = self.year_entry.get()
-
-#             if not all([org_id, role, status, committee, semester, year]):
-#                 messagebox.showerror("Error", "All fields are required.")
-#                 return
-
-#             orgsystem.cursor.execute("""
-#                 INSERT INTO serves (memberid, organizationid, role, status, committee, semester, academicyear)
-#                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-#             """, (member_id, org_id, role, status, committee, semester, year))
-#             orgsystem.db.commit()
-
-#             messagebox.showinfo("Success", f"You have successfully joined organization {org_id}")
-#             self.master.show_frame(UserDashboardPage)
-
-#         except Exception as e:
-#             messagebox.showerror("Join Failed", str(e))
-
-
 class AdminDashboardPage(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
@@ -1002,31 +949,6 @@ class AdminMemberPage(ctk.CTkFrame):
         self.result_box.pack(pady=10)
 
         ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(OrgSelectPage)).pack(pady=10)
-
-    # def search_members(self):
-    #     org_id = self.master.selected_org
-    #     if not org_id:
-    #         messagebox.showerror("Error", "No organization selected.")
-    #         return
-
-    #     term = self.search_entry.get()
-    #     query = """
-    #         SELECT m.firstname, m.lastname, s.role, s.committee, s.status
-    #         FROM member m JOIN serves s ON m.memberid = s.memberid
-    #         WHERE s.organizationid = %s AND (
-    #             m.firstname LIKE %s OR m.lastname LIKE %s OR s.role LIKE %s
-    #             OR s.status LIKE %s OR s.committee LIKE %s
-    #         )
-    #     """
-    #     like = f"%{term}%"
-    #     try:
-    #         orgsystem.cursor.execute(query, (org_id, like, like, like, like, like))
-    #         results = orgsystem.cursor.fetchall()
-    #         self.result_box.delete("1.0", "end")
-    #         for r in results:
-    #             self.result_box.insert("end", f"{r[0]} {r[1]} | Role: {r[2]}, Committee: {r[3]}, Status: {r[4]}\n")
-    #     except Exception as e:
-    #         messagebox.showerror("Error", str(e))
 
 class AdminFeePage(ctk.CTkFrame):
     def __init__(self, master, organization_id=None):
