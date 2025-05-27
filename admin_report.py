@@ -1,6 +1,8 @@
-from utility import clear_console, validate_input, get_next_id, db, cursor, validate_batch, show_table
+
 
 import mysql.connector
+from datetime import datetime
+from utility import clear_console, validate_input, get_next_id, db, c
 
 def admin_reports():
 	while True:

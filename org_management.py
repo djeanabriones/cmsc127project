@@ -5,10 +5,23 @@ import mysql.connector
 from datetime import datetime
 from tabulate import tabulate
 from admin_dashboard import admin_menu
-from admin_report import admin_reports
 from utility import clear_console, validate_input, get_next_id, db, cursor
+from admin_report import admin_reports
+from president import president_menu
 from member import member_menu
 
+# Database connection
+def connect_db():
+	return mysql.connector.connect(
+		host="localhost",
+		user="root",
+		password="ilove127",
+		database="org_management",
+		auth_plugin="mysql_native_password"
+	)
+
+db = connect_db()
+cursor = db.cursor()
 
 
 # Authentication
