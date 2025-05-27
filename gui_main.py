@@ -5,11 +5,11 @@ import string
 import customtkinter as ctk
 from tkinter import dialog, messagebox, Toplevel, simpledialog, ttk
 from tkcalendar import Calendar, DateEntry
-import backend as orgsystem  # Your backend module
+import backend as orgsystem
 from db_connection import db, cursor
 from utility import get_next_id
 
-# Initialize DB tables (creates them if not exist)
+# Create table if it doesn't exist
 orgsystem.create_tables()
 
 class OrgApp(ctk.CTk):
@@ -18,13 +18,12 @@ class OrgApp(ctk.CTk):
         self.selected_org = None
         self.title("Student Org Management")
         self.geometry("600x400")
-        # self.resizable(False, False)
         self.attributes("-fullscreen", True)
-       # Optional: Exit fullscreen with ESC
+        # Exit fullscreen with ESC
         self.bind("<Escape>", lambda e: self.attributes("-fullscreen", False))
 
         self.user = None
-        self.current_user = None  # Track current signed in user
+        self.current_user = None  #Track current signed in user
 
         self.frames = {}
         for F in (
@@ -32,7 +31,7 @@ class OrgApp(ctk.CTk):
             UserDashboardPage, AdminDashboardPage, OrgSelectPage,
             AdminMemberPage, AdminFeePage, AdminReportPage, AdminOrgDashboardPage
         ):
-            # Pass app instance only to SignUpPage, SignInPage
+            #Pass app instance only to SignUpPage, SignInPage
             if F in (SignUpPage, SignInPage):
                 frame = F(self, self)
             else:
@@ -54,7 +53,6 @@ class OrgApp(ctk.CTk):
         frame.tkraise()
 
     def open_admin_dashboard(self, member_id=None, org_id=None):
-        # You can do something with member_id, org_id if needed
         self.show_frame(AdminDashboardPage)
 
     def open_user_dashboard(self, member_id):
@@ -62,7 +60,6 @@ class OrgApp(ctk.CTk):
 
 
     def show_home(self):
-        # current_user assumed to be dict with 'role' and 'memberid'
         if self.current_user and self.current_user.get("role") == "admin":
             self.show_frame(AdminDashboardPage)
         else:
@@ -128,7 +125,7 @@ class SignUpPage(ctk.CTkFrame):
             messagebox.showerror("Error", "Batch must be a number.")
             return
 
-        # Call signup function - simplified, no optional join_organization params here
+        # Call signup function 
         result = orgsystem.signup(
             first_name=data["firstname"],
             last_name=data["lastname"],
@@ -143,7 +140,7 @@ class SignUpPage(ctk.CTkFrame):
         else:
             messagebox.showerror("Error", f"Signup failed: {result.get('error', 'Unknown error')}")
 
-
+#Sign in page where you can sign in as user / admin
 class SignInPage(ctk.CTkFrame):
     def __init__(self, master, app):
         super().__init__(master)
@@ -185,7 +182,6 @@ class SignInPage(ctk.CTkFrame):
                 messagebox.showerror("Login Failed", "Incorrect password.")
                 return
 
-            # Store user info in master for access from other frames
             self.master.user = {
                 "member_id": member_id,
                 "role": role,
