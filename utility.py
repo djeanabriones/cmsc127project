@@ -1,4 +1,5 @@
 # utility.py
+from datetime import datetime
 import os
 import platform
 import mysql.connector
@@ -47,3 +48,27 @@ def validate_input(prompt, input_type=str, allow_empty=False):
 			return value
 		except ValueError:
 			print(f"Error: Please enter a valid {input_type.__name__}")
+
+#NEW ADDITION
+
+def get_user_org(member_id):
+	cursor.execute("""
+		SELECT organizationid FROM serves
+		WHERE memberid = %s
+		ORDER BY academicyear DESC, semester DESC
+		LIMIT 1
+	""", (member_id,))
+	result = cursor.fetchone()
+	return result[0] if result else None
+
+def validate_batch():
+    current_year = datetime.now().year
+    while True:
+        # validate_input might accept min_val and max_val; if not, remove them
+        batch = validate_input("Batch (4-digit year): ", int, False)
+        
+        # Check if it's exactly 4 digits
+        if len(str(batch)) == 4 and 1900 <= batch <= current_year:
+            return batch
+        else:
+            print("Invalid input: Batch must current {current_year}")
