@@ -7,7 +7,7 @@ from tabulate import tabulate
 from admin_dashboard import admin_menu
 from db_connection import db, cursor
 from president import president_menu
-from utility import clear_console, validate_input, get_next_id, db, cursor
+from utility import clear_console, show_table, validate_input, get_next_id, db, cursor
 import matplotlib.pyplot as plt
 
 
@@ -383,6 +383,15 @@ def delete_member(member_id, org_id):
         print(f"Error: {err}")
         db.rollback()
 
+def search_members(org_id, query):
+    query = f"%{query}%"
+    sql = """
+    SELECT * FROM member m
+    JOIN serves s ON m.memberid = s.memberid
+    WHERE s.organizationid = %s AND (m.firstname LIKE %s OR m.lastname LIKE %s OR m.memberid LIKE %s)
+    """
+    cursor.execute(sql, (org_id, query, query, query))
+    return cursor.fetchall()
 
 if __name__ == "__main__":
 	landing_page()

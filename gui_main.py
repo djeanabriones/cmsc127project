@@ -223,6 +223,17 @@ class MemberPage(ctk.CTkFrame):
         self.show_chart_btn = ctk.CTkButton(self, text="Show Active/Inactive Chart", command=self.show_status_chart)
         self.show_chart_btn.pack(pady=10)
 
+        # Search Frame (above filters)
+        self.search_frame = ctk.CTkFrame(self)
+        self.search_frame.pack(fill="x", pady=(10,5))
+
+        self.search_var = ctk.StringVar()
+        self.search_entry = ctk.CTkEntry(self.search_frame, placeholder_text="Search member by Name or ID", textvariable=self.search_var, width=250)
+        self.search_entry.pack(side="left", padx=(10,5))
+
+        self.search_button = ctk.CTkButton(self.search_frame, text="Search", command=self.search_members)
+        self.search_button.pack(side="left", padx=(0,10))
+
         # --- FILTERS ---
         self.filters_frame = ctk.CTkFrame(self)
         self.filters_frame.pack(fill="x", padx=20, pady=(10, 0))
@@ -305,7 +316,7 @@ class MemberPage(ctk.CTkFrame):
         ok_btn = ctk.CTkButton(popup, text="OK", command=on_date_selected)
         ok_btn.pack(pady=5)
 
-    def refresh_members(self):
+    def refresh_members(self, members=None):
         for widget in self.member_frame.winfo_children():
             widget.destroy()
 
@@ -314,65 +325,70 @@ class MemberPage(ctk.CTkFrame):
             label = ctk.CTkLabel(self.member_frame, text=text, font=("Arial", 12, "bold"))
             label.grid(row=0, column=col, padx=5, pady=5)
 
-        all_members = orgsystem.get_members_by_org(self.organization_id)
+        # If members not passed, fetch all members and apply filters
+        if members is None:
+            all_members = orgsystem.get_members_by_org(self.organization_id)
 
-        # Gather filter values
-        role_val = self.role_filter.get()
-        status_val = self.status_filter.get()
-        gender_val = self.gender_filter.get()
-        degree_val = self.degree_filter.get().strip().lower()
-        batch_val = self.batch_filter.get().strip()
-        academic_year_val = self.academic_year_filter.get().strip()
-        committee_val = self.committee_filter.get().strip().lower()
+            # Gather filter values
+            role_val = self.role_filter.get()
+            status_val = self.status_filter.get()
+            gender_val = self.gender_filter.get()
+            degree_val = self.degree_filter.get().strip().lower()
+            batch_val = self.batch_filter.get().strip()
+            academic_year_val = self.academic_year_filter.get().strip()
+            committee_val = self.committee_filter.get().strip().lower()
 
-        # Get the "as of" date
-        as_of_date_str = self.as_of_date_var.get().strip()
-        as_of_date = None
-        try:
-            as_of_date = datetime.datetime.strptime(as_of_date_str, "%Y-%m-%d").date() if as_of_date_str else None
-        except ValueError:
-            as_of_date = None  # fallback if format is invalid
+            # Get the "as of" date
+            as_of_date_str = self.as_of_date_var.get().strip()
+            as_of_date = None
+            try:
+                as_of_date = datetime.datetime.strptime(as_of_date_str, "%Y-%m-%d").date() if as_of_date_str else None
+            except ValueError:
+                as_of_date = None  # fallback if format is invalid
 
-        filtered_members = []
-        for member in all_members:
-            mem_id, name, role, status, gender, degree, batch, academicyear, committee = member
+            filtered_members = []
+            for member in all_members:
+                mem_id, name, role, status, gender, degree, batch, academicyear, committee = member[:9]
 
-            if role_val != "All" and role != role_val:
-                continue
-            if status_val != "All" and status != status_val:
-                continue
-            if gender_val != "All" and gender != gender_val:
-                continue
-            if degree_val and degree_val not in degree.lower():
-                continue
-            if batch_val and str(batch) != batch_val:
-                continue
-            if committee_val and committee_val not in (committee or "").lower():
-                continue
-            if academic_year_val and academic_year_val not in (academicyear or ""):
-                continue
 
-            # Filter alumni based on as_of_date
-            if status == "Alumni" and as_of_date:
-                cursor.execute("""
-                    SELECT alumni_date FROM serves WHERE memberid = %s AND organizationid = %s
-                """, (mem_id, self.organization_id))
-                result = cursor.fetchone()
-                if result and result[0]:
-                    alumni_date = result[0]
-                    if alumni_date and alumni_date > as_of_date:
-                        continue  # They became alumni after the as-of date
+                if role_val != "All" and role != role_val:
+                    continue
+                if status_val != "All" and status != status_val:
+                    continue
+                if gender_val != "All" and gender != gender_val:
+                    continue
+                if degree_val and degree_val not in degree.lower():
+                    continue
+                if batch_val and str(batch) != batch_val:
+                    continue
+                if committee_val and committee_val not in (committee or "").lower():
+                    continue
+                if academic_year_val and academic_year_val not in (academicyear or ""):
+                    continue
 
-            filtered_members.append(member)
+                # Filter alumni based on as_of_date
+                if status == "Alumni" and as_of_date:
+                    cursor.execute("""
+                        SELECT alumni_date FROM serves WHERE memberid = %s AND organizationid = %s
+                    """, (mem_id, self.organization_id))
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        alumni_date = result[0]
+                        if alumni_date and alumni_date > as_of_date:
+                            continue  # They became alumni after the as-of date
 
-        # Sort by academic year string descending/ascending
-        sort_order = self.academic_sort_filter.get()
-        reverse_sort = sort_order == "Newest First"
-        filtered_members.sort(key=lambda m: m[7], reverse=reverse_sort)  # index 7 = academicyear
+                filtered_members.append(member)
 
-        # Display filtered results
-        for row, member in enumerate(filtered_members, start=1):
-            mem_id, name, role, status, gender, degree, batch, academicyear, committee = member
+            # Sort by academic year string descending/ascending
+            sort_order = self.academic_sort_filter.get()
+            reverse_sort = sort_order == "Newest First"
+            filtered_members.sort(key=lambda m: m[7], reverse=reverse_sort)  # index 7 = academicyear
+
+            members = filtered_members
+
+        # Now display members passed or filtered
+        for row, member in enumerate(members, start=1):
+            mem_id, name, role, status, gender, degree, batch, academicyear, committee = member[:9]
             ctk.CTkLabel(self.member_frame, text=str(mem_id)).grid(row=row, column=0, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=name).grid(row=row, column=1, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=role).grid(row=row, column=2, padx=5, pady=2)
@@ -388,7 +404,6 @@ class MemberPage(ctk.CTkFrame):
 
             del_btn = ctk.CTkButton(self.member_frame, text="Delete", width=50, fg_color="red", command=lambda m=member: self.delete_member(m))
             del_btn.grid(row=row, column=10, padx=5)
-
 
     def reset_filters(self):
         self.role_filter.set("All")
@@ -592,6 +607,18 @@ class MemberPage(ctk.CTkFrame):
         data = orgsystem.get_active_inactive_percentages(self.organization_id, n)
         orgsystem.show_overall_status_chart(data)
 
+    def search_members(self):
+        query = self.search_entry.get()  # get user input search text
+        filtered_members = orgsystem.search_members(self.organization_id, query)
+        self.refresh_members(filtered_members)  # pass filtered list here
+
+
+    def display_members(self, members):
+        # Clear current member list in UI (e.g., table or listbox)
+        self.members_listbox.delete(0, 'end')
+        # Add new members from the list
+        for member in members:
+            self.members_listbox.insert('end', f"{member[0]} - {member[1]}")  # example format
 
     def delete_member(self, member):
         confirm = messagebox.askyesno("Confirm Delete", f"Delete member {member[1]}?")
