@@ -134,15 +134,35 @@ def set_role(role, memberid):
     cursor.execute(query, (role, memberid))
     db.commit()
 
-def get_user_org(member_id):
+# def get_user_org(member_id):
+# 	cursor.execute("""
+# 		SELECT organizationid FROM serves
+# 		WHERE memberid = %s
+# 		ORDER BY academicyear DESC, semester DESC
+# 		LIMIT 1
+# 	""", (member_id,))
+# 	result = cursor.fetchone()
+# 	return result[0] if result else None
+
+def get_user_organizations(member_id):
 	cursor.execute("""
-		SELECT organizationid FROM serves
-		WHERE memberid = %s
-		ORDER BY academicyear DESC, semester DESC
-		LIMIT 1
+		SELECT o.organizationid, o.organizationname
+		FROM serves s
+		JOIN organization o ON s.organizationid = o.organizationid
+		WHERE s.memberid = %s
+		GROUP BY o.organizationid, o.organizationname
+		ORDER BY MAX(s.academicyear) DESC, MAX(s.semester) DESC
 	""", (member_id,))
-	result = cursor.fetchone()
-	return result[0] if result else None
+	return cursor.fetchall()
+
+def get_unpaid_dues(member_id, organization_id):
+    query = """
+        SELECT totaldue, paymentduedate
+        FROM fee
+        WHERE memberid = %s AND organizationid = %s AND paymentstatus = "unpaid"
+    """
+    cursor.execute(query, (member_id, organization_id))
+    return cursor.fetchall()
 
 def signin(member_id):
     cursor.execute("SELECT * FROM member WHERE memberid = %s", (member_id,))
