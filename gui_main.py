@@ -278,8 +278,41 @@ class UserDashboardPage(ctk.CTkFrame):
         super().tkraise(*args, **kwargs)
 
     def show_orgs(self):
-        # Placeholder
-        messagebox.showinfo("Organizations", "Display of user organizations goes here.")
+        orgs = orgsystem.get_user_organizations(self.master.user["member_id"])
+
+        if not orgs:
+            messagebox.showinfo("Organizations", "You have not joined any organizations.")
+            return
+
+        # Create a popup or a new window to list orgs
+        org_window = ctk.CTkToplevel(self)
+        org_window.title("My Organizations")
+        org_window.geometry("400x400")
+
+        ctk.CTkLabel(org_window, text="Your Organizations", font=("Arial", 16)).pack(pady=10)
+
+        for org_id, org_name in orgs:
+            btn = ctk.CTkButton(
+                org_window,
+                text=f"{org_id} - {org_name}",
+                command=lambda oid=org_id, oname=org_name: self.show_dues(oid, oname)
+            )
+            btn.pack(pady=5)
+
+    def show_dues(self, org_id, org_name):
+        dues = orgsystem.get_unpaid_dues(self.master.user["member_id"], org_id)
+
+        dues_window = ctk.CTkToplevel(self)
+        dues_window.title(f"Dues - {org_name}")
+        dues_window.geometry("400x300")
+
+        ctk.CTkLabel(dues_window, text=f"Unpaid Dues for {org_name}", font=("Arial", 14)).pack(pady=10)
+
+        if not dues:
+            ctk.CTkLabel(dues_window, text="No unpaid dues!").pack(pady=5)
+        else:
+            for amount, duedate in dues:
+                ctk.CTkLabel(dues_window, text=f"Amount: ₱{amount:.2f} | Due: {duedate}").pack(pady=3)
 
     def logout(self):
         self.master.user = None
@@ -308,8 +341,10 @@ class JoinOrgPage(ctk.CTkFrame):
         ctk.CTkButton(self, text="Back", command=lambda: master.show_frame(UserDashboardPage)).pack(pady=5)
 
     def join_org(self):
+        print("DEBUG: self.master.user =", self.master.user)
+
         try:
-            member_id = self.master.user["memberid"]
+            member_id = self.master.user["member_id"]
             org_id = int(self.org_entry.get())
             role = self.role_entry.get()
             status = self.status_entry.get()
