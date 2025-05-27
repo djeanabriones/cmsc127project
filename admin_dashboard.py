@@ -1,34 +1,62 @@
 import re
 from admin_report import admin_reports
 from utility import clear_console, validate_input, get_next_id, db, cursor, validate_batch, show_table
-
+from admin_report import admin_reports
 import mysql.connector
 
 
+# Admin Dashboard
 # Admin Dashboard
 def admin_menu():
     while True:
         clear_console()
         print("ADMIN DASHBOARD")
-        print("[1] Add New Organization")
-        print("[2] Show All Organizations")
-        print("[3] Membership Management")       
-        print("[4] Fees Management")
-        print("[5] View Reports")
+        print("[1] Organization Management")
+        print("[2] Membership Management")       
+        print("[3] Fees Management")
+        print("[4] View Reports")
         print("[0] Sign Out")
+        
+        choice = validate_input("Enter choice: ")
+        
+        if choice == '1':
+            admin_organization_management()
+        elif choice == '2':
+            admin_membership_management()
+        elif choice == '3':
+            admin_fees_management()
+        elif choice == '4':
+            admin_reports()
+        elif choice == '0':
+            return
+        else:
+            print("Error: Invalid choice")
+            input("Press Enter to continue")
+
+
+def admin_organization_management():
+    while True:
+        clear_console()
+        print("ORGANIZATION MANAGEMENT")
+        print("[1] Add New Organization")
+        print("[2] Update Organization Info")
+        print("[3] Delete Organization")
+        print("[4] Search for Organization")
+        print("[5] Show All Organizations")
+        print("[0] Back to Admin Menu")
         
         choice = validate_input("Enter choice: ")
         
         if choice == '1':
             add_organization()
         elif choice == '2':
-            show_organizations()
+            update_organization()
         elif choice == '3':
-            admin_membership_management()
+            delete_organization()
         elif choice == '4':
-            admin_fees_management()
+            search_organization()
         elif choice == '5':
-            admin_reports()
+            show_organizations()
         elif choice == '0':
             return
         else:
@@ -72,6 +100,94 @@ def add_organization():
     
     input("Press Enter to continue")
 
+def update_organization():
+    clear_console()
+    print("UPDATE ORGANIZATION INFO")
+    
+    org_id = validate_input("Organization ID: ", int)
+    
+    cursor.execute("SELECT organizationname FROM organization WHERE organizationid = %s", (org_id,))
+    org = cursor.fetchone()
+    
+    if not org:
+        print("Error: Organization not found")
+        input("Press Enter to continue")
+        return
+    
+    print(f"\nCurrent Organization Name: {org[0]}")
+    new_name = input("New Organization Name (leave blank to keep current): ")
+    
+    if not new_name:
+        print("No changes made")
+        input("Press Enter to continue")
+        return
+    
+    try:
+        cursor.execute("""
+            UPDATE organization
+            SET organizationname = %s
+            WHERE organizationid = %s
+        """, (new_name, org_id))
+        db.commit()
+        print("Organization updated successfully")
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        db.rollback()
+    
+    input("Press Enter to continue")
+
+
+def delete_organization():
+    clear_console()
+    print("DELETE ORGANIZATION")
+    
+    org_id = validate_input("Organization ID to delete: ", int)
+    
+    cursor.execute("SELECT organizationname FROM organization WHERE organizationid = %s", (org_id,))
+    org = cursor.fetchone()
+    
+    if not org:
+        print("Error: Organization not found")
+        input("Press Enter to continue")
+        return
+    
+    confirm = input(f"Are you sure you want to delete '{org[0]}' (ID: {org_id})? This will also delete all related memberships and fees. (y/n): ").lower()
+    if confirm != 'y':
+        print("Deletion canceled")
+        input("Press Enter to continue")
+        return
+    
+    try:
+        cursor.execute("DELETE FROM serves WHERE organizationid = %s", (org_id,))
+        cursor.execute("DELETE FROM fee WHERE organizationid = %s", (org_id,))
+        cursor.execute("DELETE FROM organization WHERE organizationid = %s", (org_id,))
+        db.commit()
+        print("Organization deleted successfully")
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        db.rollback()
+    
+    input("Press Enter to continue")
+
+
+def search_organization():
+    clear_console()
+    print("SEARCH ORGANIZATION")
+    
+    search_term = validate_input("Search term (name or ID): ")
+    
+    query = """
+        SELECT organizationid AS "ID", 
+               organizationname AS "Name"
+        FROM organization
+        WHERE organizationid LIKE %s OR organizationname LIKE %s
+    """
+    search_param = f"%{search_term}%"
+    show_table(query, (search_param, search_param))
+    
+    input("Press Enter to continue")
+
+
 
 def show_organizations():
     clear_console()
@@ -102,6 +218,7 @@ def admin_membership_management():
         print("[3] Delete Member from Organization")
         print("[4] Search Members")
         print("[5] Assign Role/Committee")
+        print("[6] Delete ORG")
         print("[0] Back to Admin Menu")
         
         choice = validate_input("Enter choice: ")
@@ -116,11 +233,14 @@ def admin_membership_management():
             admin_search_members()
         elif choice == '5':
             admin_assign_role()
+        elif choice == '6':
+            admin_delete_organization()
         elif choice == '0':
             return
         else:
             print("Error: Invalid choice")
             input("Press Enter to continue")
+
 
 
 def admin_add_member():
@@ -554,4 +674,26 @@ def admin_view_fee_records():
 	query += " ORDER BY f.academicyear DESC, f.semester DESC"
 	
 	show_table(query, params)
+	input("Press Enter to continue")
+
+def admin_delete_organization():
+	clear_console()
+	print("DELETE ORGANIZATION")
+	
+	org_id = validate_input("Organization ID to delete: ", int)
+	
+	confirm = input(f"Are you sure you want to delete organization {org_id}? This will also delete all related fee and membership records. (y/n): ").lower()
+	if confirm != 'y':
+		print("Deletion canceled.")
+		input("Press Enter to continue")
+		return
+	
+	try:
+		cursor.execute("DELETE FROM organization WHERE organizationid = %s", (org_id,))
+		db.commit()
+		print("Organization and related records successfully deleted.")
+	except mysql.connector.Error as err:
+		print(f"Error: {err}")
+		db.rollback()
+	
 	input("Press Enter to continue")

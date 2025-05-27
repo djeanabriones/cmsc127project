@@ -37,7 +37,7 @@ CREATE TABLE fee(
     organizationid INT(3),
     CONSTRAINT fee_feeid_pk PRIMARY KEY(feeid),
     CONSTRAINT fee_memberid_fk FOREIGN KEY(memberid) REFERENCES member(memberid),
-    CONSTRAINT fee_organizationid_fk FOREIGN KEY(organizationid) REFERENCES organization(organizationid)
+    CONSTRAINT fee_organizationid_fk FOREIGN KEY(organizationid) REFERENCES organization(organizationid) ON DELETE CASCADE
 );
 
 
@@ -50,7 +50,7 @@ CREATE TABLE serves (
     semester INT(1),
     academicyear VARCHAR(9),
     CONSTRAINT serves_memberid_fk FOREIGN KEY (memberid) REFERENCES member(memberid),
-    CONSTRAINT serves_organizationid_fk FOREIGN KEY (organizationid) REFERENCES organization(organizationid)
+    CONSTRAINT serves_organizationid_fk FOREIGN KEY (organizationid) REFERENCES organization(organizationid) ON DELETE CASCADE
 );
 
 -- Insert sample organizations
