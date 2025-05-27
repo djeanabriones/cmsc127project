@@ -198,6 +198,7 @@ def get_members_by_org(org_id):
                    m.gender,
                    m.degreeprogram,
                    m.batch,
+                   s.academicyear,
                    s.committee
             FROM member m
             JOIN serves s ON m.memberid = s.memberid
@@ -211,21 +212,69 @@ def get_members_by_org(org_id):
     
 def update_member_full(memberid, org_id, firstname, lastname, batch, gender, degreeprogram, role, status):
     try:
+        # Step 1: Fetch the previous status
+        cursor.execute("""
+            SELECT status FROM serves 
+            WHERE memberid = %s AND organizationid = %s
+        """, (memberid, org_id))
+        prev_status_row = cursor.fetchone()
+        prev_status = prev_status_row[0] if prev_status_row else None
+
+        # Step 2: Update the member table
         cursor.execute("""
             UPDATE member SET firstname=%s, lastname=%s, batch=%s, gender=%s, degreeprogram=%s
             WHERE memberid=%s
         """, (firstname, lastname, batch, gender, degreeprogram, memberid))
 
-        cursor.execute("""
-            UPDATE serves SET role=%s, status=%s
-            WHERE memberid=%s AND organizationid=%s
-        """, (role, status, memberid, org_id))
+        # Step 3: Update the serves table
+        if status.lower() == 'alumni' and prev_status != 'alumni':
+            # Set alumni_date if becoming alumni now
+            cursor.execute("""
+                UPDATE serves SET role=%s, status=%s, alumni_date=CURDATE()
+                WHERE memberid=%s AND organizationid=%s
+            """, (role, status, memberid, org_id))
+        else:
+            # Don't touch alumni_date if not becoming alumni
+            cursor.execute("""
+                UPDATE serves SET role=%s, status=%s
+                WHERE memberid=%s AND organizationid=%s
+            """, (role, status, memberid, org_id))
 
         db.commit()
         return {"success": True}
+
     except mysql.connector.Error as err:
         db.rollback()
         return {"success": False, "error": str(err)}
+
+    
+def get_members_by_org_filtered(self, organization_id, status=None, as_of_date=None):
+    query = """
+    SELECT m.memberid, 
+           CONCAT(m.firstname, ' ', m.lastname) AS name, 
+           s.role, s.status, m.gender, m.degree, m.batch, s.academicyear, s.committee
+    FROM member m
+    JOIN serves s ON m.memberid = s.memberid
+    WHERE s.organizationid = %s
+    """
+    params = [organization_id]
+
+    if status:
+        query += " AND s.status = %s"
+        params.append(status)
+
+    if as_of_date:
+        query += """
+        AND STR_TO_DATE(CASE s.semester
+            WHEN 1 THEN CONCAT(SUBSTRING(s.academicyear, 1, 4), '-08-01')
+            WHEN 2 THEN CONCAT(SUBSTRING(s.academicyear, 6, 4), '-01-01')
+            END, '%Y-%m-%d') <= %s
+        """
+        params.append(as_of_date)
+
+    self.cursor.execute(query, tuple(params))
+    return self.cursor.fetchall()
+
 
 
 # Landing Page

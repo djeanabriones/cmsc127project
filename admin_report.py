@@ -273,18 +273,16 @@ def admin_report_alumni_members():
 	as_of_date = input("As of date (YYYY-MM-DD, leave blank for today): ") or datetime.now().strftime('%Y-%m-%d')
 	
 	query = """
-		SELECT DISTINCT m.memberid AS "ID", 
-			   m.firstname AS "First Name", 
-			   m.lastname AS "Last Name", 
-			   m.batch AS "Batch", 
-			   s.academicyear AS "Last Active Year"
+		SELECT m.memberid AS "ID", 
+			m.firstname AS "First Name", 
+			m.lastname AS "Last Name", 
+			m.batch AS "Batch", 
+			s.alumni_date AS "Alumni Since"
 		FROM member m 
 		JOIN serves s ON m.memberid = s.memberid
-		WHERE s.organizationid = %s AND s.status = 'alumni'
-		AND STR_TO_DATE(CASE s.semester
-			WHEN 1 THEN CONCAT(SUBSTRING(s.academicyear, 1, 4), '-08-01')
-			WHEN 2 THEN CONCAT(SUBSTRING(s.academicyear, 6, 4), '-01-01')
-			END, '%Y-%m-%d') <= %s
+		WHERE s.organizationid = %s
+		AND s.status = 'alumni'
+		AND s.alumni_date <= %s;
 	"""
 	show_table(query, (org_id, as_of_date))
 	input("Press Enter to continue")
