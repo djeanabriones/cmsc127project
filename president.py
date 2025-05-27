@@ -1,5 +1,9 @@
 
 # President Dashboard
+from utility import get_user_org
+from utility import clear_console, validate_input
+
+
 def president_menu(member_id):
 	org_id = get_user_org(member_id)
 	if not org_id:
