@@ -1118,10 +1118,11 @@ class AdminFeePage(ctk.CTkFrame):
 
                 fee_id = get_next_id("fee", "feeid")
                 cursor.execute("""
-                    INSERT INTO fee (feeid, semester, academicyear, totaldue, totalpaid, balancedue,
+                    INSERT INTO fee (semester, academicyear, totaldue, totalpaid, balancedue,
                                     paymentstatus, paymentduedate, memberid, organizationid)
-                    VALUES (%s, %s, %s, %s, 0, %s, 'unpaid', %s, %s, %s)
-                """, (fee_id, semester, year, amount, amount, due_date, member_id, org_id))
+                    VALUES (%s, %s, %s, 0, %s, 'unpaid', %s, %s, %s)
+                """, (semester, year, amount, amount, due_date, member_id, org_id))
+
                 assigned_count += 1
 
             db.commit()
