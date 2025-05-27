@@ -1,5 +1,7 @@
+import datetime
 import customtkinter as ctk
-from tkinter import dialog, messagebox
+from tkinter import dialog, messagebox, Toplevel
+from tkcalendar import Calendar, DateEntry
 import backend as orgsystem  # Your backend module
 from db_connection import db, cursor
 
@@ -207,7 +209,6 @@ class FeePage(ctk.CTkFrame):
         except ValueError:
             messagebox.showerror("Error", "Invalid amount.")
 
-
 class MemberPage(ctk.CTkFrame):
     def __init__(self, master, organization_id):
         print("MemberPage loaded")
@@ -223,15 +224,28 @@ class MemberPage(ctk.CTkFrame):
         self.filters_frame = ctk.CTkFrame(self)
         self.filters_frame.pack(fill="x", padx=20, pady=(10, 0))
 
-        # Define filters here...
+        # Role filter
         self.role_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "President", "Vice President", "Secretary", "Treasurer", "Member"], command=lambda _: self.refresh_members())
         self.role_filter.set("All")
         self.role_filter.pack(side="left", padx=5)
 
-        self.status_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "Active", "Inactive"], command=lambda _: self.refresh_members())
+        # Status filter
+        self.status_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "Active", "Inactive", "Alumni"], command=lambda _: self.refresh_members())
         self.status_filter.set("All")
-        self.status_filter.pack(side="left", padx=5)
+        self.status_filter.pack(side="left", padx=5)   
 
+        # As of date (readonly entry) and calendar button inside filters_frame for consistent layout
+        self.as_of_date_var = ctk.StringVar()
+        self.as_of_date_entry = ctk.CTkEntry(self.filters_frame, textvariable=self.as_of_date_var, placeholder_text="As of date (YYYY-MM-DD)", state="readonly", width=120)
+        self.as_of_date_entry.pack(side="left", padx=5)
+
+        self.calendar_btn = ctk.CTkButton(self.filters_frame, text="Pick Date", width=80, command=self.open_calendar_popup)
+        self.calendar_btn.pack(side="left", padx=5)
+
+        # Refresh members after date changes
+        self.as_of_date_var.trace_add("write", lambda *args: self.refresh_members())
+
+        # Other filters
         self.gender_filter = ctk.CTkOptionMenu(self.filters_frame, values=["All", "Male", "Female"], command=lambda _: self.refresh_members())
         self.gender_filter.set("All")
         self.gender_filter.pack(side="left", padx=5)
@@ -244,6 +258,18 @@ class MemberPage(ctk.CTkFrame):
         self.batch_filter.pack(side="left", padx=5)
         self.batch_filter.bind("<KeyRelease>", lambda event: self.refresh_members())
 
+        self.academic_year_filter = ctk.CTkEntry(self.filters_frame, placeholder_text="Academic Year")
+        self.academic_year_filter.pack(side="left", padx=5)
+        self.academic_year_filter.bind("<KeyRelease>", lambda event: self.refresh_members())
+
+        self.academic_sort_filter = ctk.CTkOptionMenu(
+            self.filters_frame,
+            values=["Newest First", "Oldest First"],
+            command=lambda _: self.refresh_members()
+        )
+        self.academic_sort_filter.set("Newest First")
+        self.academic_sort_filter.pack(side="left", padx=5)
+
         self.committee_filter = ctk.CTkEntry(self.filters_frame, placeholder_text="Committee")
         self.committee_filter.pack(side="left", padx=5)
         self.committee_filter.bind("<KeyRelease>", lambda event: self.refresh_members())
@@ -251,17 +277,31 @@ class MemberPage(ctk.CTkFrame):
         self.reset_btn = ctk.CTkButton(self.filters_frame, text="Reset", command=self.reset_filters)
         self.reset_btn.pack(side="left", padx=5)
 
-        # ✅ Create the member frame **before** calling refresh_members
+        # Member frame for the list
         self.member_frame = ctk.CTkScrollableFrame(self)
         self.member_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
         self.refresh_members()
 
+    def open_calendar_popup(self):
+        def on_date_selected():
+            selected_date = cal.selection_get()
+            self.as_of_date_var.set(selected_date.strftime("%Y-%m-%d"))
+            popup.destroy()
+
+        popup = Toplevel(self)
+        popup.title("Select Date")
+        cal = Calendar(popup, selectmode='day')
+        cal.pack(padx=10, pady=10)
+
+        ok_btn = ctk.CTkButton(popup, text="OK", command=on_date_selected)
+        ok_btn.pack(pady=5)
+
     def refresh_members(self):
         for widget in self.member_frame.winfo_children():
             widget.destroy()
 
-        headers = ["Mem ID", "Name", "Role", "Status", "Gender", "Degree", "Batch", "Committee", "Edit", "Delete"]
+        headers = ["Mem ID", "Name", "Role", "Status", "Gender", "Degree", "Batch", "Academic Year", "Committee", "Edit", "Delete"]
         for col, text in enumerate(headers):
             label = ctk.CTkLabel(self.member_frame, text=text, font=("Arial", 12, "bold"))
             label.grid(row=0, column=col, padx=5, pady=5)
@@ -274,12 +314,20 @@ class MemberPage(ctk.CTkFrame):
         gender_val = self.gender_filter.get()
         degree_val = self.degree_filter.get().strip().lower()
         batch_val = self.batch_filter.get().strip()
+        academic_year_val = self.academic_year_filter.get().strip()
         committee_val = self.committee_filter.get().strip().lower()
 
-        # Filter logic
+        # Get the "as of" date
+        as_of_date_str = self.as_of_date_var.get().strip()
+        as_of_date = None
+        try:
+            as_of_date = datetime.datetime.strptime(as_of_date_str, "%Y-%m-%d").date() if as_of_date_str else None
+        except ValueError:
+            as_of_date = None  # fallback if format is invalid
+
         filtered_members = []
         for member in all_members:
-            mem_id, name, role, status, gender, degree, batch, committee = member
+            mem_id, name, role, status, gender, degree, batch, academicyear, committee = member
 
             if role_val != "All" and role != role_val:
                 continue
@@ -293,12 +341,30 @@ class MemberPage(ctk.CTkFrame):
                 continue
             if committee_val and committee_val not in (committee or "").lower():
                 continue
+            if academic_year_val and academic_year_val not in (academicyear or ""):
+                continue
+
+            # Filter alumni based on as_of_date
+            if status == "Alumni" and as_of_date:
+                cursor.execute("""
+                    SELECT alumni_date FROM serves WHERE memberid = %s AND organizationid = %s
+                """, (mem_id, self.organization_id))
+                result = cursor.fetchone()
+                if result and result[0]:
+                    alumni_date = result[0]
+                    if alumni_date and alumni_date > as_of_date:
+                        continue  # They became alumni after the as-of date
 
             filtered_members.append(member)
 
+        # Sort by academic year string descending/ascending
+        sort_order = self.academic_sort_filter.get()
+        reverse_sort = sort_order == "Newest First"
+        filtered_members.sort(key=lambda m: m[7], reverse=reverse_sort)  # index 7 = academicyear
+
         # Display filtered results
         for row, member in enumerate(filtered_members, start=1):
-            mem_id, name, role, status, gender, degree, batch, committee = member
+            mem_id, name, role, status, gender, degree, batch, academicyear, committee = member
             ctk.CTkLabel(self.member_frame, text=str(mem_id)).grid(row=row, column=0, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=name).grid(row=row, column=1, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=role).grid(row=row, column=2, padx=5, pady=2)
@@ -306,13 +372,15 @@ class MemberPage(ctk.CTkFrame):
             ctk.CTkLabel(self.member_frame, text=gender).grid(row=row, column=4, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=degree).grid(row=row, column=5, padx=5, pady=2)
             ctk.CTkLabel(self.member_frame, text=str(batch)).grid(row=row, column=6, padx=5, pady=2)
-            ctk.CTkLabel(self.member_frame, text=committee or "").grid(row=row, column=7, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=str(academicyear)).grid(row=row, column=7, padx=5, pady=2)
+            ctk.CTkLabel(self.member_frame, text=committee or "").grid(row=row, column=8, padx=5, pady=2)
 
             edit_btn = ctk.CTkButton(self.member_frame, text="Edit", width=50, command=lambda m=member: self.edit_member(m))
-            edit_btn.grid(row=row, column=8, padx=5)
+            edit_btn.grid(row=row, column=9, padx=5)
 
             del_btn = ctk.CTkButton(self.member_frame, text="Delete", width=50, fg_color="red", command=lambda m=member: self.delete_member(m))
-            del_btn.grid(row=row, column=9, padx=5)
+            del_btn.grid(row=row, column=10, padx=5)
+
 
     def reset_filters(self):
         self.role_filter.set("All")
@@ -320,8 +388,11 @@ class MemberPage(ctk.CTkFrame):
         self.gender_filter.set("All")
         self.degree_filter.delete(0, "end")
         self.batch_filter.delete(0, "end")
+        self.academic_year_filter.delete(0, "end")
+        self.as_of_date_var.set("")
         self.committee_filter.delete(0, "end")
         self.refresh_members()
+
 
     def open_add_member_dialog(self):
         dialog = ctk.CTkToplevel(self)
@@ -408,21 +479,27 @@ class MemberPage(ctk.CTkFrame):
 
         ctk.CTkButton(dialog, text="Submit", command=submit_member).grid(row=button_row, columnspan=2, pady=10)
 
+    def open_calendar_popup(self):
+        def on_date_selected():
+            selected_date = cal.selection_get()
+            self.as_of_date_var.set(selected_date.strftime("%Y-%m-%d"))
+            popup.destroy()
+
+        popup = Toplevel(self)
+        popup.title("Select Date")
+        cal = Calendar(popup, selectmode='day')
+        cal.pack(padx=10, pady=10)
+
+        ok_btn = ctk.CTkButton(popup, text="OK", command=on_date_selected)
+        ok_btn.pack(pady=5)
+        
     def edit_member(self, member):
         edit_window = ctk.CTkToplevel(self)
         edit_window.title("Edit Member")
 
-        memberid, name, role, status = member
-        firstname, lastname = name.split(' ', 1)
-
-        # Fetch additional member details from DB
-        org_id = self.organization_id
-        cursor.execute("SELECT batch, gender, degreeprogram FROM member WHERE memberid = %s", (memberid,))
-        result = cursor.fetchone()
-        if not result:
-            messagebox.showerror("Error", "Member not found.")
-            return
-        batch, gender, degreeprogram = result
+        # Unpack all values from the member tuple
+        memberid, name, role, status, gender, degreeprogram, batch, academicyear, committee = member
+        firstname, lastname = name.split(' ', 1) if ' ' in name else (name, "")
 
         # Labels & Entry Fields
         ctk.CTkLabel(edit_window, text="First Name").pack()
@@ -456,7 +533,7 @@ class MemberPage(ctk.CTkFrame):
         role_menu.pack()
 
         ctk.CTkLabel(edit_window, text="Status").pack()
-        status_menu = ctk.CTkOptionMenu(edit_window, values=["Active", "Inactive"])
+        status_menu = ctk.CTkOptionMenu(edit_window, values=["Active", "Inactive", "Alumni"])
         status_menu.set(status)
         status_menu.pack()
 
@@ -472,7 +549,7 @@ class MemberPage(ctk.CTkFrame):
 
                 result = orgsystem.update_member_full(
                     memberid=memberid,
-                    org_id=org_id,
+                    org_id=self.organization_id,
                     firstname=updated_firstname,
                     lastname=updated_lastname,
                     batch=updated_batch,
@@ -496,6 +573,7 @@ class MemberPage(ctk.CTkFrame):
                 print("Error updating member:", e)
 
         ctk.CTkButton(edit_window, text="Save", command=save_changes).pack(pady=10)
+
 
 
     def delete_member(self, member):
